@@ -1,0 +1,13 @@
+{
+  "name": "kontrast-app",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Gestión del festival Kontrast (circo y música)",
+  "scripts": {
+    "start": "node src/server.js",
+    "reset-db": "node src/reset-db.js"
+  },
+  "engines": { "node": ">=22.13" },
+  "dependencies": { "express": "^4.21.2" }
+}

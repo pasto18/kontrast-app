@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kontrast · Gestión</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand">KONTRAST <span>2025 · gestión del festival</span></div>
+  <nav class="tabs">
+    <button data-view="voluntarios" class="active">Voluntarios</button>
+    <button data-view="personas">Personas</button>
+  </nav>
+  <div class="clock" title="Reloj simulado para probar distintos momentos del festival">
+    <span class="clock-label">🕒 Reloj simulado</span>
+    <input type="datetime-local" id="clock-input">
+    <button data-clock="-1440" title="−1 día">−1d</button>
+    <button data-clock="-60" title="−1 hora">−1h</button>
+    <button data-clock="60" title="+1 hora">+1h</button>
+    <button data-clock="1440" title="+1 día">+1d</button>
+    <button id="clock-play" title="Hacer correr el reloj">▶</button>
+    <select id="clock-speed" title="Velocidad">
+      <option value="60">1 min/s</option>
+      <option value="600">10 min/s</option>
+      <option value="3600">1 h/s</option>
+    </select>
+    <button id="clock-reset" title="Volver al inicio del festival">⟲</button>
+  </div>
+</header>
+
+<main>
+  <section id="view-voluntarios">
+    <div class="toolbar">
+      <div id="day-selector" class="days"></div>
+    </div>
+    <div class="toolbar">
+      <div id="area-filter" class="chips"></div>
+      <button id="add-task" class="primary">+ Nueva tarea</button>
+    </div>
+    <div class="table-wrap"><table id="tasks-table"></table></div>
+  </section>
+
+  <section id="view-personas" hidden>
+    <div class="toolbar">
+      <input type="search" id="people-search" placeholder="Buscar persona…">
+      <div id="people-filter" class="chips"></div>
+      <span class="legend"><i class="sq on"></i> está <i class="sq off"></i> no está <i class="sq unk"></i> sin datos</span>
+    </div>
+    <div class="table-wrap"><table id="people-table"></table></div>
+  </section>
+</main>
+
+<dialog id="task-dialog">
+  <form method="dialog" id="task-form">
+    <h2 id="task-dialog-title">Nueva tarea</h2>
+    <div class="grid">
+      <label>Área <select name="area" required></select></label>
+      <label>Día <select name="date" required></select></label>
+      <label>Inicio <input type="time" name="start" required></label>
+      <label>Fin <input type="time" name="end" required></label>
+      <label class="wide">Tarea <input name="name" required maxlength="80"></label>
+      <label>Espacio <input name="space" maxlength="60"></label>
+      <label>Voluntarios necesarios <input type="number" name="needed" min="1" max="99" value="1" required></label>
+      <label class="wide">Responsable <input name="responsible" list="people-names" maxlength="80"></label>
+      <label class="wide check" id="repeat-wrap"><input type="checkbox" name="repeatAllDays"> Repetir todos los días del festival</label>
+    </div>
+    <p class="error" id="task-error"></p>
+    <div class="actions">
+      <button type="button" id="task-cancel">Cancelar</button>
+      <button type="submit" class="primary">Guardar</button>
+    </div>
+  </form>
+</dialog>
+<datalist id="people-names"></datalist>
+<div id="toast" hidden></div>
+<script src="app.js"></script>
+</body>
+</html>
