@@ -166,7 +166,6 @@ tr.flash{animation:flash 1.6s}
 .cand-note{font-size:13px;margin:0 0 10px;color:var(--mute)}
 .busy{display:block;font-size:12px;white-space:normal}
 #detail-body td{vertical-align:top}
-#people-sort.active{background:var(--ink);color:var(--bg);border-color:var(--ink)}
 
 /* mismas medidas con y sin carga horaria */
 #people-table th.d,#people-table td.d{width:36px;min-width:36px;max-width:36px;padding:4px 1px;overflow:hidden}
@@ -204,3 +203,6 @@ select.psk{font-size:11px;padding:1px 2px;border-style:dashed;max-width:92px;col
 .tsearch{margin-left:auto;display:flex;align-items:center;gap:8px}
 .tsearch input{width:250px;max-width:50vw}.tsearch .hint{white-space:nowrap}
 .slot.hit{border-color:var(--accent);box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 35%,transparent);background:color-mix(in srgb,var(--accent) 12%,transparent)}
+
+th.sortable{cursor:pointer;user-select:none}th.sortable:hover{color:var(--ink)}
+.sarrow{color:var(--accent);font-size:10px}

@@ -23,8 +23,8 @@ const pickers = { task: { ids: [], other: false }, person: { ids: [], other: fal
 let editingPerson = null, pAv = {};
 let showTime = store.get('showTime', false);
 let workload = {}, groupHours = {}, loadMode = store.get('loadMode', false);
-let peopleSort = store.get('peopleSort', 'none'); // none | most | least
-const SORT_LABEL = { none: 'Orden: lista original', most: 'Orden: más días primero ↓', least: 'Orden: menos días primero ↑' };
+// Orden de la tabla de Personas: clic en una cabecera = orden principal, segundo clic = inverso, tercer clic = lista original.
+let peopleSort = store.get('peopleSort2', { key: null, step: 0 });
 const VIEWS = ['voluntarios', 'personas', 'companias', 'espacios'];
 let showOtherTeams = store.get('showOtherTeams', false);
 
@@ -311,14 +311,58 @@ function balanceCell(p) {
 }
 
 // Promedio de horas por día de estadía, contando solo los días ya transcurridos (hasta hoy, según el reloj) en los que está.
-function avgHours(p) {
+function avgValue(p) {
   const past = cfg.days.filter((d) => d.date <= clockDate() && p.av[d.date] === 1);
-  if (!past.length) return '–';
+  if (!past.length) return null;
   const mins = cfg.days.filter((d) => d.date <= clockDate()).reduce((n, d) => n + (workload[p.id]?.[d.date] || 0), 0);
-  return `${(Math.round(mins / past.length / 6) / 10).toString().replace('.', ',')} h`;
+  return Math.round(mins / past.length / 6) / 10;
+}
+function avgHours(p) { const v = avgValue(p); return v === null ? '–' : `${v.toString().replace('.', ',')} h`; }
+// Desbalance (horas de diferencia entre Técnica y Bar/Cocina/Limpieza); null si la persona no está en ambos grupos.
+function balanceDiff(p) {
+  const t = teamsOf(p);
+  if (!(t.includes('TÉCNICA') && t.some((x) => CB_TEAMS.includes(x)))) return null;
+  const g = groupHours[p.id] || { cb: 0, t: 0 };
+  return Math.abs(g.t - g.cb);
 }
 
 let pEditing = null, pOther = null, pDirty = false;
+
+// Cada columna: dirección del primer clic ('asc' alfabético / ascendente, 'desc' los mayores primero) y su valor. null = va siempre al final.
+const HORARIO_RANK = { madrugador: 0, indiferente: 1, trasnochador: 2 };
+const SORTS = {
+  nombre: { dir: 'asc', val: (p) => p.nombre },
+  grupo: { dir: 'asc', val: (p) => GRUPO_CORTO[p.grupo] || p.grupo || '' },
+  equipo: { dir: 'asc', val: (p) => teamsOf(p).join(' ') || null },
+  horario: { dir: 'asc', val: (p) => HORARIO_RANK[p.horario || 'indiferente'] },
+  aptitudes: { dir: 'asc', val: (p) => p.skill_ids.map(skillName).sort((a, b) => a.localeCompare(b, 'es')).join(' ') || null },
+  balance: { dir: 'desc', val: balanceDiff },
+  dias: { dir: 'desc', val: (p) => cfg.days.filter((d) => p.av[d.date] === 1).length },
+  prom: { dir: 'desc', val: avgValue },
+};
+function sortSpec(key) {
+  if (SORTS[key]) return SORTS[key];
+  if (key?.startsWith('day:')) { const date = key.slice(4); return { dir: 'desc', val: (p) => (loadMode ? workload[p.id]?.[date] || 0 : p.av[date] === 1 ? 2 : p.av[date] == null ? 1 : 0) }; }
+  return null;
+}
+function sortPeople(list) {
+  const spec = sortSpec(peopleSort.key);
+  if (!spec || !peopleSort.step) return;
+  const sign = (spec.dir === 'asc') === (peopleSort.step === 1) ? 1 : -1; // paso 2 = inverso
+  const byName = (a, b) => a.nombre.localeCompare(b.nombre, 'es', { sensitivity: 'base' });
+  list.sort((a, b) => {
+    const x = spec.val(a), y = spec.val(b);
+    if (x === null || x === undefined) return y === null || y === undefined ? byName(a, b) : 1; // sin valor: siempre al final
+    if (y === null || y === undefined) return -1;
+    const c = typeof x === 'number' ? x - y : String(x).localeCompare(String(y), 'es', { sensitivity: 'base' });
+    return sign * c || byName(a, b);
+  });
+}
+const sortArrow = (key) => {
+  if (peopleSort.key !== key || !peopleSort.step) return '';
+  const spec = sortSpec(key), up = (spec.dir === 'asc') === (peopleSort.step === 1);
+  return ` <span class="sarrow">${up ? '▲' : '▼'}</span>`;
+};
 const HORARIO_ICON = { madrugador: ['☀', 'Madrugadorx'], trasnochador: ['☾', 'Trasnochadorx'], indiferente: ['–', 'Indiferente'] };
 
 function renderPeople(force = false) {
@@ -330,11 +374,10 @@ function renderPeople(force = false) {
     && (!peopleTeams.size || teamsOf(p).some((t) => peopleTeams.has(t))));
   const days = cfg.days;
   const present = (p) => days.filter((d) => p.av[d.date] === 1).length;
-  if (peopleSort !== 'none') list.sort((a, b) => (peopleSort === 'most' ? present(b) - present(a) : present(a) - present(b)) || a.nombre.localeCompare(b.nombre, 'es', { sensitivity: 'base' }));
-  $('#people-sort').textContent = SORT_LABEL[peopleSort];
-  $('#people-sort').classList.toggle('active', peopleSort !== 'none');
-  const head = `<thead><tr><th>Nombre</th><th>Grupo</th><th>Equipo</th><th title="Horario preferido: ☀ madrugadorx, ☾ trasnochadorx, – indiferente">Horario</th><th>Aptitudes</th><th title="Horas de más en Técnica (T) o en Bar/Cocina/Limpieza (B/C). Solo para quien está en ambos grupos">Balance</th><th class="num" title="Días presentes en el festival">Días</th>
-    ${days.map((d) => `<th class="d" title="${d.label}">${d.dow.slice(0, 1).toUpperCase()}<br>${d.day}</th>`).join('')}<th class="num" title="Horas trabajadas por día de estadía, hasta la fecha del reloj">Prom./día</th><th></th></tr></thead>`;
+  sortPeople(list, present);
+  const th = (key, label, attrs = '', cls = '') => `<th class="sortable ${cls}" data-sort="${key}" ${attrs}>${label}${sortArrow(key)}</th>`;
+  const head = `<thead><tr>${th('nombre', 'Nombre')}${th('grupo', 'Grupo')}${th('equipo', 'Equipo')}${th('horario', 'Horario', 'title="Horario preferido: ☀ madrugadorx, ☾ trasnochadorx, – indiferente. Orden: madrugadorx, indiferente, trasnochadorx"')}${th('aptitudes', 'Aptitudes')}${th('balance', 'Balance', 'title="Horas de más en Técnica (T) o en Bar/Cocina/Limpieza (B/C). Solo para quien está en ambos grupos. Orden: más desbalance primero"')}${th('dias', 'Días', 'title="Días presentes en el festival. Orden: más días primero"', 'num')}
+    ${days.map((d) => `<th class="d sortable" data-sort="day:${d.date}" title="${d.label}: ${loadMode ? 'más horas primero' : 'presentes primero'}">${d.dow.slice(0, 1).toUpperCase()}<br>${d.day}${sortArrow('day:' + d.date)}</th>`).join('')}${th('prom', 'Prom./día', 'title="Horas trabajadas por día de estadía, hasta la fecha del reloj. Orden: más horas primero"', 'num')}<th></th></tr></thead>`;
   const tot = `<tr class="tot"><td colspan="7" style="text-align:right">${loadMode ? 'Horas asignadas por día (lista filtrada)' : 'Presentes por día (lista filtrada)'}</td>
     ${days.map((d) => `<td>${loadMode ? (Math.round(list.reduce((n, p) => n + (workload[p.id]?.[d.date] || 0), 0) / 6) / 10).toString().replace('.', ',') : list.filter((p) => p.av[d.date] === 1).length}</td>`).join('')}<td></td><td></td></tr>`;
   $('#people-table').innerHTML = head + '<tbody>' + tot + list.map((p) => `<tr data-id="${p.id}">
@@ -414,6 +457,12 @@ function startPersonEdit(id, field, host) {
 }
 
 $('#people-table').addEventListener('click', (e) => {
+  const th = e.target.closest('th[data-sort]');
+  if (th && !pEditing) {
+    const key = th.dataset.sort;
+    peopleSort = peopleSort.key === key ? { key, step: (peopleSort.step + 1) % 3 } : { key, step: 1 };
+    store.set('peopleSort2', peopleSort); return renderPeople();
+  }
   if (e.target.closest('button, select, input') || pEditing) return;
   const tr = e.target.closest('tr[data-id]'); if (!tr) return;
   const id = +tr.dataset.id;
@@ -723,7 +772,6 @@ document.addEventListener('keydown', (e) => {
   }
   if (e.key === 'Enter' && e.target.dataset?.skInput) { e.preventDefault(); run(saveOtherSkill(e.target.dataset.skInput)); }
 });
-$('#people-sort').onclick = () => { peopleSort = { none: 'most', most: 'least', least: 'none' }[peopleSort]; store.set('peopleSort', peopleSort); renderPeople(); };
 $('#load-toggle').onclick = () => { loadMode = !loadMode; store.set('loadMode', loadMode); run(refreshWorkload().then(renderPeople)); };
 async function openCandidates(taskId) {
   const r = await api(`/api/tasks/${taskId}/candidates`);
