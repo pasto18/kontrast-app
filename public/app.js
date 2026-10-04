@@ -21,6 +21,8 @@ let companies = [], spaces = [], dlgCompanies = [], skills = [];
 const pickers = { task: { ids: [], other: false }, person: { ids: [], other: false } };
 let editingPerson = null, pAv = {};
 let workload = {}, loadMode = store.get('loadMode', false);
+let peopleSort = store.get('peopleSort', 'none'); // none | most | least
+const SORT_LABEL = { none: 'Orden: lista original', most: 'Orden: más días primero ↓', least: 'Orden: menos días primero ↑' };
 const VIEWS = ['voluntarios', 'personas', 'companias', 'espacios'];
 let showOtherTeams = store.get('showOtherTeams', false);
 
@@ -289,15 +291,20 @@ function renderPeople() {
   const list = people.filter((p) => (!q || p.nombre.toLowerCase().includes(q))
     && (!peopleTeams.size || teamsOf(p).some((t) => peopleTeams.has(t))));
   const days = cfg.days;
-  const head = `<thead><tr><th>Nombre</th><th>Grupo</th><th>Equipo</th><th class="num">Dispo</th>
+  const present = (p) => days.filter((d) => p.av[d.date] === 1).length;
+  if (peopleSort !== 'none') list.sort((a, b) => (peopleSort === 'most' ? present(b) - present(a) : present(a) - present(b)) || a.nombre.localeCompare(b.nombre, 'es', { sensitivity: 'base' }));
+  $('#people-sort').textContent = SORT_LABEL[peopleSort];
+  $('#people-sort').classList.toggle('active', peopleSort !== 'none');
+  const head = `<thead><tr><th>Nombre</th><th>Grupo</th><th>Equipo</th><th class="num">Dispo</th><th class="num" title="Días presentes en el festival">Días</th>
     ${days.map((d) => `<th class="d" title="${d.label}">${d.dow.slice(0, 1).toUpperCase()}<br>${d.day}</th>`).join('')}<th>Aptitudes</th><th></th></tr></thead>`;
-  const tot = `<tr class="tot"><td colspan="4" style="text-align:right">${loadMode ? 'Horas asignadas por día (lista filtrada)' : 'Presentes por día (lista filtrada)'}</td>
+  const tot = `<tr class="tot"><td colspan="5" style="text-align:right">${loadMode ? 'Horas asignadas por día (lista filtrada)' : 'Presentes por día (lista filtrada)'}</td>
     ${days.map((d) => `<td>${loadMode ? fmtH(list.reduce((n, p) => n + (workload[p.id]?.[d.date] || 0), 0)) || 0 : list.filter((p) => p.av[d.date] === 1).length}</td>`).join('')}<td></td><td></td></tr>`;
   $('#people-table').innerHTML = head + '<tbody>' + tot + list.map((p) => `<tr>
     <td><b>${esc(p.nombre)}</b>${p.por_confirmar ? ' <span class="conf">POR CONFIRMAR</span>' : ''}</td>
     <td>${esc(p.grupo)}</td>
     <td>${teamsOf(p).map((t) => `<span class="eq ${esc(t)}">${esc(t)}</span>`).join('')}</td>
     <td class="num">${p.dispo ?? ''}${p.dispo ? '%' : ''}</td>
+    <td class="num"><b>${present(p)}</b></td>
     ${days.map((d) => `<td class="d">${daySquare(p, d)}</td>`).join('')}
     <td>${p.skill_ids.map((id) => `<span class="apt">${esc(skillName(id))}</span>`).join('')}${p.aptitudes ? `<span class="apt-note">${esc(p.aptitudes)}</span>` : ''}</td>
     <td><button class="icon" data-pedit="${p.id}" title="Editar persona">✎</button></td></tr>`).join('') + '</tbody>';
@@ -553,6 +560,7 @@ document.addEventListener('keydown', (e) => {
   }
   if (e.key === 'Enter' && e.target.dataset?.skInput) { e.preventDefault(); run(saveOtherSkill(e.target.dataset.skInput)); }
 });
+$('#people-sort').onclick = () => { peopleSort = { none: 'most', most: 'least', least: 'none' }[peopleSort]; store.set('peopleSort', peopleSort); renderPeople(); };
 $('#load-toggle').onclick = () => { loadMode = !loadMode; store.set('loadMode', loadMode); run(refreshWorkload().then(renderPeople)); };
 async function openCandidates(taskId) {
   const r = await api(`/api/tasks/${taskId}/candidates`);

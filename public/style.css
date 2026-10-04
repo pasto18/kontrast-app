@@ -166,3 +166,4 @@ tr.flash{animation:flash 1.6s}
 .cand-note{font-size:13px;margin:0 0 10px;color:var(--mute)}
 .busy{display:block;font-size:12px;white-space:normal}
 #detail-body td{vertical-align:top}
+#people-sort.active{background:var(--ink);color:var(--bg);border-color:var(--ink)}
