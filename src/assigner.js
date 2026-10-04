@@ -2,7 +2,7 @@
 // 1) Tareas que piden aptitudes: se cubren primero, solo con personas que tengan alguna de ellas.
 // 2) Resto de tareas: cualquier persona del equipo que corresponda al área.
 // Siempre: la persona está ese día, es del equipo del área, no se solapa con otra tarea suya
-// y no supera MAX_DAILY_MINUTES de trabajo ese día. Lo que no se pueda cubrir se deja vacío.
+// y no supera su tope diario (MAX_DAILY_MINUTES; 5 h para TAQUILLA) de trabajo ese día. Lo que no se pueda cubrir se deja vacío.
 import { db } from './db.js';
 import { AREA_TEAMS, AREAS, AREA_GROUP, STRICT_AREAS, MAX_DAILY_MINUTES as CAP, capOf, horarioMismatch } from './config.js';
 
@@ -80,7 +80,7 @@ export function autoAssign({ dates, areas, replace }) {
       for (const c of cts) c.pool = c.skills.length ? c.fullPool.filter((p) => c.skills.some((s) => p.skills.has(s))) : c.fullPool;
       const uncovered = (c) => { const have = new Set([...c.who].flatMap((pid) => [...byId.get(pid).skills])); return c.skills.filter((s) => !have.has(s)); };
 
-      const eligible = (p, c) => !c.who.has(p.id) && (load.get(p.id) || 0) + c.dur <= CAP
+      const eligible = (p, c) => !c.who.has(p.id) && (load.get(p.id) || 0) + c.dur <= capOf(p.teams)
         && !(busy.get(p.id) || []).some((r) => overlap(r, c.range));
       const give = (p, c) => {
         if (balClass(p, c) === 2) result.imbalanced++;
@@ -128,11 +128,12 @@ export function autoAssign({ dates, areas, replace }) {
         let reason;
         const unc = uncovered(c), absent = fill(c).filter((p) => !c.who.has(p.id));
         const cand = unc.length ? c.pool.filter((p) => unc.some((s) => p.skills.has(s)) && !c.who.has(p.id)) : absent;
-        if (c.dur > CAP) reason = `dura más de ${CAP / 60} h`;
+        const maxCap = Math.max(CAP, ...c.fullPool.map((p) => capOf(p.teams)));
+        if (c.dur > maxCap) reason = `dura más de ${maxCap / 60} h`;
         else if (!c.fullPool.length) reason = 'nadie del equipo disponible ese día';
         else if (unc.length && !cand.length) reason = `nadie disponible con la aptitud (${unc.map((s) => skillNames.get(s)).join(', ')})`;
         else if (!cand.length) reason = 'no hay más personas del equipo disponibles ese día';
-        else if (cand.every((p) => (load.get(p.id) || 0) + c.dur > CAP)) reason = `quienes podrían ya llegarían al tope de ${CAP / 60} h`;
+        else if (cand.every((p) => (load.get(p.id) || 0) + c.dur > capOf(p.teams))) reason = 'quienes podrían ya llegarían al tope de horas del día';
         else reason = 'los candidatos están en otra tarea a la misma hora';
         result.unresolved.push({ task_id: c.t.id, date, start: c.t.start, end: c.t.end, area: c.t.area, name: c.t.name, space: c.t.space, missing: c.missing, reason });
         result.unresolved_slots += c.missing;

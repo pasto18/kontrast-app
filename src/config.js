@@ -59,6 +59,6 @@ export function periodOf(start) {
 export const horarioMismatch = (horario, start) => (horario === 'madrugador' && periodOf(start) === 'noche') || (horario === 'trasnochador' && periodOf(start) === 'manana');
 
 // Quien está en el equipo TAQUILLA puede trabajar hasta 5 h al día: pasar de 4 h no es conflicto para esas personas
-// (solo se señala en rojo en la carga horaria). El asignador automático sigue usando el tope general.
+// (solo se señala en rojo en la carga horaria). El asignador automático también usa ese tope de 5 h.
 export const MAX_DAILY_MINUTES_TAQUILLA = 300;
 export const capOf = (teams) => ([...teams].includes('TAQUILLA') ? MAX_DAILY_MINUTES_TAQUILLA : MAX_DAILY_MINUTES);
