@@ -202,6 +202,21 @@ app.put('/api/tasks/:id', (req, res) => {
   res.json({ ok: true });
 });
 
+// Duplica una tarea (sin voluntarios asignados); queda justo debajo del original en el orden de la tabla.
+app.post('/api/tasks/:id/duplicate', (req, res) => {
+  const src = db.prepare('SELECT * FROM tasks WHERE id = ?').get(+req.params.id);
+  if (!src) return bad(res, 'Tarea no encontrada', 404);
+  db.exec('BEGIN');
+  try {
+    const id = Number(db.prepare('INSERT INTO tasks (date, start, end, area, space, name, needed, responsible) VALUES (?,?,?,?,?,?,?,?)')
+      .run(src.date, src.start, src.end, src.area, src.space, src.name, src.needed, src.responsible).lastInsertRowid);
+    db.prepare('INSERT INTO task_companies (task_id, company_id) SELECT ?, company_id FROM task_companies WHERE task_id = ?').run(id, src.id);
+    db.prepare('INSERT INTO task_skills (task_id, skill_id) SELECT ?, skill_id FROM task_skills WHERE task_id = ?').run(id, src.id);
+    db.exec('COMMIT');
+    res.status(201).json({ id });
+  } catch (e) { db.exec('ROLLBACK'); throw e; }
+});
+
 app.delete('/api/tasks/:id', (req, res) => {
   db.prepare('DELETE FROM tasks WHERE id = ?').run(+req.params.id);
   res.json({ ok: true });

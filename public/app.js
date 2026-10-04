@@ -119,25 +119,106 @@ function slots(t) {
   return out.join('');
 }
 
-function renderTasks() {
+let editing = null, otherTask = null, dirty = false, flashId = null;
+
+function skillCell(t) {
+  const chips = t.skills.map((k) => `<span class="skc">${esc(k.name)}<button data-tsk-rm="${t.id}:${k.id}" title="Quitar">×</button></span>`).join('');
+  if (otherTask === t.id) return `${chips}<span class="other"><input data-tsk-input="${t.id}" placeholder="Nueva aptitud…" maxlength="40"><button data-tsk-save="${t.id}">+</button><button data-tsk-cancel="${t.id}" title="Cancelar">×</button></span>`;
+  const have = new Set(t.skills.map((k) => k.id));
+  return `${chips}<select data-tsk-add="${t.id}"><option value="">+ aptitud</option>${skills.filter((k) => !have.has(k.id)).map((k) => `<option value="${k.id}">${esc(k.name)}</option>`).join('')}<option value="__other">Otro…</option></select>`;
+}
+
+function renderTasks(force = false) {
+  if (!force && (editing || otherTask !== null)) { dirty = true; return; } // no pisar una celda en edición
+  dirty = false;
   const rows = tasks.filter((t) => areas.has(t.area));
-  const head = `<thead><tr><th>Inicio</th><th>Fin</th><th class="num">Dur.</th><th>Área</th><th>Espacio</th><th>Tarea</th>
+  const head = `<thead><tr><th class="tm">Inicio</th><th class="tm">Fin</th><th class="num tm">Dur.</th><th>Área</th><th>Espacio</th><th>Tarea</th><th>Aptitudes</th>
     <th class="num nec" title="Voluntarios necesarios">Nec.</th><th>Responsable</th><th class="est"></th><th>Voluntarios</th><th></th></tr></thead>`;
-  if (!rows.length) { $('#tasks-table').innerHTML = head + `<tbody><tr><td colspan="11" class="empty">No hay tareas para este día con los filtros actuales.</td></tr></tbody>`; return; }
+  if (!rows.length) { $('#tasks-table').innerHTML = head + `<tbody><tr><td colspan="12" class="empty">No hay tareas para este día con los filtros actuales.</td></tr></tbody>`; return; }
   $('#tasks-table').innerHTML = head + '<tbody>' + rows.map((t) => {
     const st = taskStatus(t), n = t.volunteers.length;
     const cls = t.needed === 0 ? 'f3' : n === 0 ? 'f0' : n < t.needed ? 'f1' : 'f2';
-    return `<tr class="${st === 'future' ? '' : st}">
-      <td>${t.start}${st === 'now' ? '<span class="badge live">EN CURSO</span>' : ''}</td><td>${t.end}</td>
-      <td class="num">${fmtDur(t)}</td>
-      <td><span class="tag ${t.area}">${esc(cfg.areas[t.area])}</span></td>
-      <td>${esc(t.space)}</td><td><b>${esc(t.name)}</b>${t.skills.length || t.companies.length ? `<div>${t.skills.map((k) => `<span class="sktag">${esc(k.name)}</span>`).join("")}${t.companies.map((c) => `<span class="cotag">${esc(c.name)}</span>`).join("")}</div>` : ""}</td>
-      <td class="num nec">${t.needed}</td><td>${esc(t.responsible)}</td>
+    return `<tr data-id="${t.id}" class="${st === 'future' ? '' : st}${t.id === flashId ? ' flash' : ''}">
+      <td class="tm ed" data-field="start">${st === 'now' ? '<i class="live-dot" title="En curso"></i>' : ''}${t.start}</td><td class="tm ed" data-field="end">${t.end}</td>
+      <td class="num tm ed" data-field="dur">${fmtDur(t)}</td>
+      <td class="ed" data-field="area"><span class="tag ${t.area}">${esc(cfg.areas[t.area])}</span></td>
+      <td class="ed" data-field="space">${esc(t.space)}</td>
+      <td class="ed" data-field="name"><b>${esc(t.name)}</b>${t.companies.length ? `<div>${t.companies.map((c) => `<span class="cotag">${esc(c.name)}</span>`).join('')}</div>` : ''}</td>
+      <td class="sk"><div class="tsk">${skillCell(t)}</div></td>
+      <td class="num nec ed" data-field="needed">${t.needed}</td><td class="ed" data-field="responsible">${esc(t.responsible)}</td>
       <td class="est"><span class="fill ${cls}">${n}/${t.needed}</span></td>
       <td><div class="slots">${slots(t)}</div></td>
-      <td><button class="icon" data-edit="${t.id}" title="Editar">✎</button>
+      <td class="acts"><button class="icon" data-edit="${t.id}" title="Editar todo">✎</button>
+          <button class="icon" data-dup="${t.id}" title="Duplicar">⧉</button>
           <button class="icon" data-del="${t.id}" title="Eliminar">🗑</button></td></tr>`;
   }).join('') + '</tbody>';
+  const ot = $('[data-tsk-input]'); if (ot) ot.focus();
+  if (flashId) { $(`tr[data-id="${flashId}"]`)?.scrollIntoView({ block: 'nearest' }); flashId = null; }
+}
+
+// ---- Guardado de una tarea desde la tabla (edición en celda) ----
+async function saveTask(t, patch) {
+  const body = { date: t.date, start: t.start, end: t.end, area: t.area, space: t.space, name: t.name, needed: t.needed,
+    responsible: t.responsible, company_ids: t.companies.map((c) => c.id), skill_ids: t.skills.map((k) => k.id), ...patch };
+  try { await api(`/api/tasks/${t.id}`, 'PUT', body); } catch (e) { toast(e.message); }
+  await loadTasks();
+}
+
+function startEdit(id, field, td) {
+  const t = tasks.find((x) => x.id === id);
+  const mk = (tag, props = {}) => Object.assign(document.createElement(tag), props);
+  let el;
+  if (field === 'start' || field === 'end') el = mk('input', { type: 'time', value: t[field] });
+  else if (field === 'dur') el = mk('input', { type: 'text', value: fmtDur(t), size: 4 });
+  else if (field === 'needed') el = mk('input', { type: 'number', min: 0, max: 99, value: t.needed });
+  else if (field === 'area') {
+    el = mk('select'); el.innerHTML = Object.entries(cfg.areas).map(([k, l]) => `<option value="${k}" ${k === t.area ? 'selected' : ''}>${esc(l)}</option>`).join('');
+  } else {
+    el = mk('input', { type: 'text', value: t[field], maxlength: 80 });
+    if (field === 'space') el.setAttribute('list', 'space-names');
+    if (field === 'responsible') el.setAttribute('list', 'people-names');
+  }
+  el.className = 'cell-input';
+  td.textContent = ''; td.appendChild(el);
+  editing = { id, field };
+  el.focus(); if (el.select && el.type !== 'time') el.select();
+  let done = false;
+  const finish = async (save) => {
+    if (done) return; done = true; editing = null;
+    let patch = null;
+    if (save) {
+      const v = el.value.trim();
+      if (field === 'dur') {
+        const h = parseFloat(v.replace(',', '.'));
+        if (!(h > 0 && h <= 24)) { toast('Duración inválida (horas, por ejemplo 1,5)'); }
+        else { const m = (toMin(t.start) + Math.round(h * 60)) % 1440; patch = { end: `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}` }; }
+      } else if (field === 'needed') patch = { needed: v === '' ? t.needed : Number(v) };
+      else if ((field === 'start' || field === 'end') && !v) patch = null;
+      else if (field === 'name' && !v) patch = null;
+      else patch = { [field]: v };
+    }
+    if (patch && Object.entries(patch).some(([k, v]) => v !== t[k])) await saveTask(t, patch); else renderTasks();
+  };
+  el.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); finish(true); } else if (e.key === 'Escape') finish(false); });
+  el.addEventListener('blur', () => finish(true));
+  if (field === 'area') el.addEventListener('change', () => finish(true));
+}
+
+$('#tasks-table').addEventListener('click', (e) => {
+  if (e.target.closest('button, select, input, .slots')) return;
+  const td = e.target.closest('td.ed');
+  if (td && !editing) startEdit(+td.closest('tr').dataset.id, td.dataset.field, td);
+});
+
+async function saveTaskSkillOther(id) {
+  const name = $(`[data-tsk-input="${id}"]`).value.trim();
+  if (!name) return;
+  const sk = await api('/api/skills', 'POST', { name });
+  if (!skills.some((k) => k.id === sk.id)) skills.push(sk);
+  renderAllSkillPickers();
+  const t = tasks.find((x) => x.id === id);
+  otherTask = null;
+  await saveTask(t, { skill_ids: [...new Set([...t.skills.map((k) => k.id), sk.id])] });
 }
 
 function renderOthersToggle() {
@@ -378,6 +459,10 @@ document.addEventListener('click', (e) => {
   else if (d.edit) openTask(tasks.find((t) => t.id === +d.edit));
   else if (d.del) { const t = tasks.find((x) => x.id === +d.del); if (confirm(`¿Eliminar "${t.name}" (${t.start}–${t.end})? Se perderán sus voluntarios asignados.`)) run(api(`/api/tasks/${t.id}`, 'DELETE').then(loadTasks)); }
   else if (d.clock) setClock(clockMs + d.clock * 60000);
+  else if (d.dup) run(api(`/api/tasks/${d.dup}/duplicate`, 'POST').then((r) => { flashId = r.id; return loadTasks(); }));
+  else if (d.tskRm) { const [id, sid] = d.tskRm.split(':').map(Number); const t = tasks.find((x) => x.id === id); run(saveTask(t, { skill_ids: t.skills.map((k) => k.id).filter((k) => k !== sid) })); }
+  else if (d.tskSave) run(saveTaskSkillOther(+d.tskSave));
+  else if (d.tskCancel) { otherTask = null; renderTasks(); }
   else if (d.skRm) { const [k, id] = d.skRm.split(':'); pickers[k].ids = pickers[k].ids.filter((x) => x !== +id); renderSkillPicker(k); }
   else if (d.skSave) run(saveOtherSkill(d.skSave));
   else if (d.skCancel) { pickers[d.skCancel].other = false; renderSkillPicker(d.skCancel); }
@@ -391,6 +476,12 @@ document.addEventListener('click', (e) => {
 });
 document.addEventListener('change', (e) => {
   const s = e.target;
+  if (s.dataset.tskAdd !== undefined && s.value) {
+    const id = +s.dataset.tskAdd, t = tasks.find((x) => x.id === id);
+    if (s.value === '__other') { otherTask = id; renderTasks(true); }
+    else run(saveTask(t, { skill_ids: [...t.skills.map((k) => k.id), +s.value] }));
+    return;
+  }
   if (s.dataset.skAdd !== undefined && s.value) {
     const k = s.dataset.skAdd;
     if (s.value === '__other') pickers[k].other = true; else pickers[k].ids.push(+s.value);
@@ -404,6 +495,11 @@ $('#detail-close').onclick = () => $('#detail-dialog').close();
 $('#companies-search').oninput = renderCompanies;
 $('#spaces-search').oninput = renderSpaces;
 document.addEventListener('keydown', (e) => {
+  if (e.target.dataset?.tskInput) {
+    if (e.key === 'Enter') { e.preventDefault(); run(saveTaskSkillOther(+e.target.dataset.tskInput)); }
+    else if (e.key === 'Escape') { otherTask = null; renderTasks(); }
+    return;
+  }
   if (e.key === 'Enter' && e.target.dataset?.skInput) { e.preventDefault(); run(saveOtherSkill(e.target.dataset.skInput)); }
 });
 $('#add-person').onclick = () => openPerson(null);

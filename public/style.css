@@ -113,3 +113,22 @@ button.danger{color:var(--bad);border-color:var(--bad)}
 #person-dialog{max-height:94vh;overflow:auto}
 .apt{display:inline-block;font-size:11px;font-weight:600;padding:0 7px;border-radius:99px;background:color-mix(in srgb,var(--accent) 16%,transparent);color:var(--accent);margin-right:3px}
 .apt-note{color:var(--mute);font-size:12px}
+
+/* edición en celda y columnas compactas */
+td.ed{cursor:text}td.ed:hover{background:color-mix(in srgb,var(--accent) 8%,transparent)}
+td.ed:empty::before{content:"";display:inline-block;min-width:40px}
+.cell-input{font:inherit;padding:2px 4px;border:1px solid var(--accent);border-radius:4px;min-width:0;width:100%;max-width:220px}
+input.cell-input[type=time]{width:84px}input.cell-input[type=number]{width:56px}
+.tm{width:1%;padding-left:6px;padding-right:6px}
+.live-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--accent);margin-right:5px;animation:pulse 1.4s infinite}
+@keyframes pulse{50%{opacity:.3}}
+.sk{width:190px;min-width:150px;white-space:normal}
+.tsk{display:flex;flex-wrap:wrap;gap:3px 6px;align-items:center}
+.skc{font-size:11px;font-weight:600;color:var(--accent);white-space:nowrap}
+.skc::before{content:"⚙ "}
+.skc button{border:0;background:none;padding:0 3px;color:var(--mute);font-size:11px}.skc button:hover{color:var(--bad)}
+.tsk select{font-size:11px;padding:1px 2px;border-style:dashed;max-width:96px;color:var(--mute)}
+.tsk .other{display:inline-flex;gap:3px}.tsk .other input{font-size:11px;width:110px;padding:1px 4px}.tsk .other button{padding:0 6px;font-size:11px}
+.acts{white-space:nowrap}
+tr.flash{animation:flash 1.6s}
+@keyframes flash{from{background:color-mix(in srgb,var(--ok) 35%,transparent)}to{background:transparent}}
