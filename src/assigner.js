@@ -188,7 +188,9 @@ export function findConflicts() {
       add('solape', p, b, `se solapa con "${a.name}" (${a.start}–${a.end})`);
     }
     const mins = list.reduce((n, t) => n + durMin(t), 0);
-    if (mins > CAP) {
+    // Un exceso aceptado a propósito (botón Resolver) deja de ser conflicto mientras no aumente.
+    const ok = db.prepare('SELECT minutes FROM accepted_overtime WHERE person_id = ? AND date = ?').get(p.id, list[0].date);
+    if (mins > CAP && !(ok && mins <= ok.minutes)) {
       const first = [...list].sort(order)[0];
       out.push({ kind: 'horas', person_id: p.id, nombre: p.nombre, date: first.date, task_id: null, task_name: '', start: first.start, end: '', area: first.area, space: '',
         message: `trabaja ${fmtH(mins)} h ese día (tope ${CAP / 60} h): ${[...list].sort(order).map((t) => `${t.name} ${t.start}–${t.end}`).join(' · ')}` });

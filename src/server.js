@@ -231,6 +231,13 @@ app.post('/api/tasks/:id/volunteers', (req, res) => {
   const strict = strictError(id, pid);
   if (strict) return bad(res, strict, 409);
   db.prepare('INSERT OR IGNORE INTO assignments (task_id, person_id) VALUES (?,?)').run(id, pid);
+  // "Resolver" desde Conflictos: se acepta a propósito que la persona pase del tope de horas ese día.
+  if (req.body.accept_overtime) {
+    const t = db.prepare('SELECT date FROM tasks WHERE id = ?').get(id);
+    const mins = db.prepare('SELECT t.start, t.end FROM assignments a JOIN tasks t ON t.id = a.task_id WHERE a.person_id = ? AND t.date = ?').all(pid, t.date)
+      .reduce((n, r) => n + durMin(r), 0);
+    if (mins > MAX_DAILY_MINUTES) db.prepare('INSERT OR REPLACE INTO accepted_overtime (person_id, date, minutes) VALUES (?,?,?)').run(pid, t.date, mins);
+  }
   res.status(201).json({ ok: true });
 });
 

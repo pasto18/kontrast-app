@@ -544,7 +544,7 @@ document.addEventListener('click', (e) => {
   else if (d.space) run(openDetail('space', d.space));
   else if (d.coRm) { dlgCompanies = dlgCompanies.filter((id) => id !== +d.coRm); renderDlgCompanies(); }
   else if (d.cand) run(openCandidates(+d.cand));
-  else if (d.candAssign) { const [t, p] = d.candAssign.split(':').map(Number); run(api(`/api/tasks/${t}/volunteers`, 'POST', { person_id: p })).finally(async () => { await loadTasks(); run(openCandidates(t)); }); }
+  else if (d.candAssign) { const [t, p, over] = d.candAssign.split(':').map(Number); run(api(`/api/tasks/${t}/volunteers`, 'POST', { person_id: p, accept_overtime: !!over })).finally(async () => { await loadTasks(); run(openCandidates(t)); }); }
   else if (d.cfxRm) { const [t, p] = d.cfxRm.split(':'); run(api(`/api/tasks/${t}/volunteers/${p}`, 'DELETE').then(loadTasks)); }
   else if (d.goto) { $('#detail-dialog').close(); $('#conflicts-dialog').close(); showView('voluntarios'); selectDay(d.goto); }
 });
@@ -591,7 +591,8 @@ async function openCandidates(taskId) {
         <td><span class="cst ${c.status}">${{ libre: 'Libre', solape: 'Ocupada/o a esa hora', tope: `Pasaría de ${h(r.cap)} h` }[c.status]}</span>${c.status === 'solape' && c.over ? `<div class="hint">y además pasaría de ${h(r.cap)} h</div>` : ''}</td>
         <td>${c.blockers.length ? c.blockers.map(busy).join('') : c.tasks.length ? c.tasks.map(busy).join('') : '<span class="hint">Sin tareas ese día</span>'}</td>
         <td class="num">${h(c.minutes)} h → ${h(c.minutes + t.duration)} h</td>
-        <td>${c.status === 'libre' && t.missing ? `<button data-cand-assign="${t.id}:${c.id}">Asignar</button>` : ''}</td></tr>`).join('')}</tbody></table></div>`
+        <td style="white-space:nowrap">${!t.missing ? '' : c.status === 'libre' ? `<button data-cand-assign="${t.id}:${c.id}">Asignar</button>`
+          : c.status === 'tope' ? `<button class="danger" data-cand-assign="${t.id}:${c.id}:1" title="Asignar igualmente: ${esc(c.nombre)} pasará de ${h(r.cap)} h (${h(c.minutes + t.duration)} h ese día)">Resolver</button>` : ''}</td></tr>`).join('')}</tbody></table></div>`
     : '<div class="empty">No hay nadie que cumpla las condiciones (disponible ese día, del equipo del área y con la aptitud pedida).</div>');
   $('#detail-dialog').showModal();
 }
@@ -605,7 +606,7 @@ function renderConflicts() {
   const task = (x) => `<span class="tag ${x.area}">${esc(cfg.areas[x.area])}</span> <b>${esc(x.name ?? x.task_name)}</b>${x.space ? ` · ${esc(x.space)}` : ''}`;
   $('#conflicts-body').innerHTML =
     (un.length ? `<h4>Tareas sin cubrir (${un.length})</h4><div class="res-list"><table><thead><tr><th>Día</th><th>Hora</th><th>Tarea</th><th class="num">Faltan</th><th>Motivo</th><th></th></tr></thead><tbody>${un.map((u) =>
-      `<tr>${when(u)}<td>${task(u)}</td><td class="num">${u.missing}</td><td>${esc(u.reason)}</td><td style="white-space:nowrap"><button data-cand="${u.task_id}">Candidatos</button> <button data-goto="${u.date}">Ver ›</button></td></tr>`).join('')}</tbody></table></div>` : '')
+      `<tr>${when(u)}<td>${task(u)}</td><td class="num">${u.missing}</td><td>${esc(u.reason)}</td><td style="white-space:nowrap"><button data-cand="${u.task_id}">+ Detalles</button> <button data-goto="${u.date}">Ver ›</button></td></tr>`).join('')}</tbody></table></div>` : '')
     + (as.length ? `<h4>Asignaciones con problemas (${as.length})</h4><div class="res-list"><table><thead><tr><th>Día</th><th>Hora</th><th>Persona</th><th>Problema</th><th>Tarea</th><th></th></tr></thead><tbody>${as.map((c) =>
       `<tr>${when(c)}<td><b>${esc(c.nombre)}</b></td><td><span class="kind ${c.kind}">${KIND[c.kind]}</span> ${esc(c.message)}</td><td>${c.task_id ? task(c) : ''}</td>
        <td style="white-space:nowrap"><button data-goto="${c.date}">Ver ›</button>${c.person_id ? ` <button data-cfx-rm="${c.task_id}:${c.person_id}" title="Quitar a esta persona de la tarea">Quitar</button>` : ''}</td></tr>`).join('')}</tbody></table></div>` : '');
@@ -634,7 +635,7 @@ $('#assign-run').onclick = async () => {
       : 'No queda ninguna tarea sin resolver. 🎉'}</p>`
       + (r.imbalanced ? `<p class="hint">${r.imbalanced} ${r.imbalanced === 1 ? 'asignación aumenta' : 'asignaciones aumentan'} el desequilibrio Técnica / Bar-Cocina de alguien que está en ambos grupos (no había otra opción).</p>` : '')
       + (r.unresolved.length ? `<div class="res-list"><table><thead><tr><th>Día</th><th>Hora</th><th>Tarea</th><th class="num">Faltan</th><th>Motivo</th><th></th></tr></thead><tbody>${r.unresolved.map((u) =>
-        `<tr><td>${fmtDay(u.date)}</td><td>${u.start}–${u.end}</td><td><span class="tag ${u.area}">${esc(cfg.areas[u.area])}</span> <b>${esc(u.name)}</b>${u.space ? ` · ${esc(u.space)}` : ''}</td><td class="num">${u.missing}</td><td>${esc(u.reason)}</td><td><button data-cand="${u.task_id}">Candidatos</button></td></tr>`).join('')}</tbody></table></div>` : '')
+        `<tr><td>${fmtDay(u.date)}</td><td>${u.start}–${u.end}</td><td><span class="tag ${u.area}">${esc(cfg.areas[u.area])}</span> <b>${esc(u.name)}</b>${u.space ? ` · ${esc(u.space)}` : ''}</td><td class="num">${u.missing}</td><td>${esc(u.reason)}</td><td><button data-cand="${u.task_id}">+ Detalles</button></td></tr>`).join('')}</tbody></table></div>` : '')
       + '<div class="actions"><button type="button" id="assign-close" class="primary">Cerrar</button></div>';
     $('#assign-form').hidden = true; $('#assign-result').hidden = false;
     $('#assign-close').onclick = () => $('#assign-dialog').close();

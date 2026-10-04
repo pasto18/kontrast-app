@@ -76,6 +76,12 @@ CREATE TABLE IF NOT EXISTS assign_unresolved (
   task_id INTEGER PRIMARY KEY REFERENCES tasks(id) ON DELETE CASCADE,
   reason TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS accepted_overtime (
+  person_id INTEGER NOT NULL REFERENCES people(id) ON DELETE CASCADE,
+  date TEXT NOT NULL,
+  minutes INTEGER NOT NULL,   -- total del día aceptado a propósito (pasa del tope)
+  PRIMARY KEY (person_id, date)
+);
 CREATE TABLE IF NOT EXISTS assignments (
   task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
   person_id INTEGER NOT NULL REFERENCES people(id) ON DELETE CASCADE,
