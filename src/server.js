@@ -1,7 +1,7 @@
 import express from 'express';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { db, seedIfEmpty } from './db.js';
+import { db, seedIfEmpty, sectoresDe } from './db.js';
 import { DAYS, AREAS } from './config.js';
 
 seedIfEmpty();
@@ -14,11 +14,85 @@ const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 app.get('/api/config', (_req, res) => res.json({ days: DAYS, areas: AREAS }));
 
-app.get('/api/people', (_req, res) => {
+function peopleList() {
   const people = db.prepare('SELECT * FROM people ORDER BY id').all();
-  const av = new Map(people.map((p) => [p.id, {}]));
-  for (const r of db.prepare('SELECT person_id, date, present FROM availability').all()) av.get(r.person_id)[r.date] = r.present;
-  res.json(people.map((p) => ({ ...p, av: av.get(p.id) })));
+  const m = new Map(people.map((p) => [p.id, { ...p, av: {}, skill_ids: [] }]));
+  for (const r of db.prepare('SELECT person_id, date, present FROM availability').all()) m.get(r.person_id).av[r.date] = r.present;
+  for (const r of db.prepare('SELECT person_id, skill_id FROM person_skills').all()) m.get(r.person_id).skill_ids.push(r.skill_id);
+  return [...m.values()];
+}
+app.get('/api/people', (_req, res) => res.json(peopleList()));
+
+const skillIds = (body) => [...new Set((Array.isArray(body.skill_ids) ? body.skill_ids : []).map(Number))];
+const allSkillsExist = (ids) => ids.every((id) => db.prepare('SELECT 1 FROM skills WHERE id = ?').get(id));
+
+app.get('/api/skills', (_req, res) => res.json(db.prepare('SELECT id, name FROM skills ORDER BY id').all()));
+
+const stripAccents = (x) => x.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+app.post('/api/skills', (req, res) => {
+  const name = String(req.body.name ?? '').trim().replace(/\s+/g, ' ');
+  if (!name || name.length > 40) return bad(res, 'La aptitud necesita un nombre (máx. 40 caracteres)');
+  const dup = db.prepare('SELECT id, name FROM skills').all().find((s) => stripAccents(s.name) === stripAccents(name));
+  if (dup) return res.json(dup);
+  res.status(201).json({ id: Number(db.prepare('INSERT INTO skills (name) VALUES (?)').run(name).lastInsertRowid), name });
+});
+
+function readPerson(body) {
+  const nombre = String(body.nombre ?? '').trim();
+  if (!nombre) return { error: 'La persona necesita un nombre' };
+  const equipo = [...new Set((Array.isArray(body.equipo) ? body.equipo : []).map((x) => String(x).trim()).filter(Boolean))].join(', ');
+  const dispo = body.dispo === '' || body.dispo == null ? null : Number(body.dispo);
+  if (dispo !== null && (!Number.isInteger(dispo) || dispo < 0 || dispo > 100)) return { error: 'Disponibilidad: entero entre 0 y 100' };
+  const av = {};
+  for (const d of DAYS) {
+    const v = body.av?.[d.date];
+    if (v !== undefined) { if (![0, 1, null].includes(v)) return { error: 'Valor de día inválido' }; av[d.date] = v; }
+  }
+  const ids = skillIds(body);
+  if (!allSkillsExist(ids)) return { error: 'Aptitud no encontrada' };
+  return { p: { nombre, grupo: String(body.grupo ?? '').trim(), equipo, sectores: sectoresDe(equipo), dispo,
+    aptitudes: String(body.aptitudes ?? '').trim(), por_confirmar: body.por_confirmar ? 1 : 0 }, av, ids };
+}
+
+function savePersonRelations(id, av, ids) {
+  const up = db.prepare('INSERT OR REPLACE INTO availability (person_id, date, present) VALUES (?,?,?)');
+  for (const [date, v] of Object.entries(av)) up.run(id, date, v);
+  db.prepare('DELETE FROM person_skills WHERE person_id = ?').run(id);
+  const ins = db.prepare('INSERT INTO person_skills (person_id, skill_id) VALUES (?,?)');
+  for (const sid of ids) ins.run(id, sid);
+}
+
+app.post('/api/people', (req, res) => {
+  const { p, av, ids, error } = readPerson(req.body);
+  if (error) return bad(res, error);
+  db.exec('BEGIN');
+  try {
+    const id = Number(db.prepare('INSERT INTO people (nombre, grupo, equipo, sectores, dispo, aptitudes, por_confirmar) VALUES (?,?,?,?,?,?,?)')
+      .run(p.nombre, p.grupo, p.equipo, p.sectores, p.dispo, p.aptitudes, p.por_confirmar).lastInsertRowid);
+    savePersonRelations(id, av, ids);
+    db.exec('COMMIT');
+    res.status(201).json({ id });
+  } catch (e) { db.exec('ROLLBACK'); throw e; }
+});
+
+app.put('/api/people/:id', (req, res) => {
+  const id = +req.params.id;
+  if (!db.prepare('SELECT 1 FROM people WHERE id = ?').get(id)) return bad(res, 'Persona no encontrada', 404);
+  const { p, av, ids, error } = readPerson(req.body);
+  if (error) return bad(res, error);
+  db.exec('BEGIN');
+  try {
+    db.prepare('UPDATE people SET nombre=?, grupo=?, equipo=?, sectores=?, dispo=?, aptitudes=?, por_confirmar=? WHERE id=?')
+      .run(p.nombre, p.grupo, p.equipo, p.sectores, p.dispo, p.aptitudes, p.por_confirmar, id);
+    savePersonRelations(id, av, ids);
+    db.exec('COMMIT');
+    res.json({ ok: true });
+  } catch (e) { db.exec('ROLLBACK'); throw e; }
+});
+
+app.delete('/api/people/:id', (req, res) => {
+  db.prepare('DELETE FROM people WHERE id = ?').run(+req.params.id);
+  res.json({ ok: true });
 });
 
 const ORDER = `ORDER BY date, start < '06:00', start, end, id`;
@@ -27,11 +101,13 @@ const ORDER = `ORDER BY date, start < '06:00', start, end, id`;
 function withRelations(tasks) {
   if (!tasks.length) return tasks;
   const ids = tasks.map((t) => t.id), ph = ids.map(() => '?').join(',');
-  const by = new Map(tasks.map((t) => [t.id, { ...t, volunteers: [], companies: [] }]));
+  const by = new Map(tasks.map((t) => [t.id, { ...t, volunteers: [], companies: [], skills: [] }]));
   for (const v of db.prepare(`SELECT a.task_id, p.id, p.nombre FROM assignments a JOIN people p ON p.id = a.person_id
     WHERE a.task_id IN (${ph}) ORDER BY p.nombre`).all(...ids)) by.get(v.task_id).volunteers.push({ id: v.id, nombre: v.nombre });
   for (const c of db.prepare(`SELECT tc.task_id, c.id, c.name FROM task_companies tc JOIN companies c ON c.id = tc.company_id
     WHERE tc.task_id IN (${ph}) ORDER BY c.name`).all(...ids)) by.get(c.task_id).companies.push({ id: c.id, name: c.name });
+  for (const k of db.prepare(`SELECT ts.task_id, s.id, s.name FROM task_skills ts JOIN skills s ON s.id = ts.skill_id
+    WHERE ts.task_id IN (${ph}) ORDER BY s.id`).all(...ids)) by.get(k.task_id).skills.push({ id: k.id, name: k.name });
   return tasks.map((t) => by.get(t.id));
 }
 
@@ -79,7 +155,15 @@ function readTask(body) {
   if (!Number.isInteger(t.needed) || t.needed < 0 || t.needed > 99) return { error: 'Voluntarios necesarios: entero entre 0 y 99' };
   const ids = [...new Set((Array.isArray(body.company_ids) ? body.company_ids : []).map(Number))];
   if (ids.some((id) => !db.prepare('SELECT 1 FROM companies WHERE id = ?').get(id))) return { error: 'Compañía no encontrada' };
-  return { t, ids };
+  const sk = skillIds(body);
+  if (!allSkillsExist(sk)) return { error: 'Aptitud no encontrada' };
+  return { t, ids, sk };
+}
+
+function setSkills(taskId, ids) {
+  db.prepare('DELETE FROM task_skills WHERE task_id = ?').run(taskId);
+  const ins = db.prepare('INSERT INTO task_skills (task_id, skill_id) VALUES (?,?)');
+  for (const id of ids) ins.run(taskId, id);
 }
 
 function setCompanies(taskId, ids) {
@@ -89,13 +173,16 @@ function setCompanies(taskId, ids) {
 }
 
 app.post('/api/tasks', (req, res) => {
-  const { t, ids, error } = readTask(req.body);
+  const { t, ids, sk, error } = readTask(req.body);
   if (error) return bad(res, error);
   const dates = req.body.repeatAllDays ? DAYS.map((d) => d.date) : [t.date];
   const ins = db.prepare('INSERT INTO tasks (date, start, end, area, space, name, needed, responsible) VALUES (?,?,?,?,?,?,?,?)');
   db.exec('BEGIN');
   try {
-    for (const date of dates) setCompanies(ins.run(date, t.start, t.end, t.area, t.space, t.name, t.needed, t.responsible).lastInsertRowid, ids);
+    for (const date of dates) {
+      const id = ins.run(date, t.start, t.end, t.area, t.space, t.name, t.needed, t.responsible).lastInsertRowid;
+      setCompanies(id, ids); setSkills(id, sk);
+    }
     db.exec('COMMIT');
   } catch (e) { db.exec('ROLLBACK'); throw e; }
   res.status(201).json({ created: dates.length });
@@ -104,13 +191,14 @@ app.post('/api/tasks', (req, res) => {
 app.put('/api/tasks/:id', (req, res) => {
   const id = +req.params.id;
   if (!db.prepare('SELECT 1 FROM tasks WHERE id = ?').get(id)) return bad(res, 'Tarea no encontrada', 404);
-  const { t, ids, error } = readTask(req.body);
+  const { t, ids, sk, error } = readTask(req.body);
   if (error) return bad(res, error);
   const n = db.prepare('SELECT COUNT(*) n FROM assignments WHERE task_id = ?').get(id).n;
   if (t.needed < n) return bad(res, `Ya hay ${n} voluntarios asignados; quita alguno antes de bajar la cantidad`, 409);
   db.prepare('UPDATE tasks SET date=?, start=?, end=?, area=?, space=?, name=?, needed=?, responsible=? WHERE id=?')
     .run(t.date, t.start, t.end, t.area, t.space, t.name, t.needed, t.responsible, id);
   setCompanies(id, ids);
+  setSkills(id, sk);
   res.json({ ok: true });
 });
 

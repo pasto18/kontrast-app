@@ -52,6 +52,7 @@
     <div class="toolbar">
       <input type="search" id="people-search" placeholder="Buscar persona…">
       <div id="people-filter" class="chips"></div>
+      <button id="add-person" class="primary">+ Nueva persona</button>
       <span class="legend"><i class="sq on"></i> está <i class="sq off"></i> no está <i class="sq unk"></i> sin datos</span>
     </div>
     <div class="table-wrap"><table id="people-table"></table></div>
@@ -80,6 +81,9 @@
       <label>Espacio <input name="space" list="space-names" maxlength="60"></label>
       <label>Voluntarios necesarios <input type="number" name="needed" min="0" max="99" value="1" required></label>
       <label class="wide">Responsable <input name="responsible" list="people-names" maxlength="80"></label>
+      <div class="wide lab">Aptitudes necesarias
+        <div id="sp-task" class="skill-picker"></div>
+      </div>
       <div class="wide lab">Compañías
         <div id="task-companies" class="chips-in"></div>
         <select id="task-company-add"></select>
@@ -89,6 +93,32 @@
     <p class="error" id="task-error"></p>
     <div class="actions">
       <button type="button" id="task-cancel">Cancelar</button>
+      <button type="submit" class="primary">Guardar</button>
+    </div>
+  </form>
+</dialog>
+<dialog id="person-dialog">
+  <form method="dialog" id="person-form">
+    <h2 id="person-dialog-title">Editar persona</h2>
+    <div class="grid">
+      <label class="wide">Nombre <input name="nombre" required maxlength="80"></label>
+      <label>Grupo <select name="grupo"></select></label>
+      <label>Disponibilidad (%) <select name="dispo"><option value="">Sin dato</option><option value="50">50</option><option value="100">100</option></select></label>
+      <div class="wide lab">Equipo <div id="person-teams" class="checks"></div></div>
+      <div class="wide lab">Aptitudes <div id="sp-person" class="skill-picker"></div></div>
+      <label class="wide">Notas / aptitudes de la hoja original <input name="aptitudes" maxlength="120"></label>
+      <div class="wide lab">Días <span class="hint">Clic en un cuadrado para cambiar: sin datos → está → no está</span>
+        <div id="person-days" class="pdays"></div>
+        <div class="bulk">Marcar todos:
+          <button type="button" data-pall="1">Está</button><button type="button" data-pall="0">No está</button><button type="button" data-pall="">Sin datos</button></div>
+      </div>
+      <label class="wide check"><input type="checkbox" name="por_confirmar"> Por confirmar</label>
+    </div>
+    <p class="error" id="person-error"></p>
+    <div class="actions">
+      <button type="button" id="person-delete" class="danger">Eliminar</button>
+      <span style="flex:1"></span>
+      <button type="button" id="person-cancel">Cancelar</button>
       <button type="submit" class="primary">Guardar</button>
     </div>
   </form>

@@ -59,6 +59,20 @@ CREATE TABLE IF NOT EXISTS task_companies (
   company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
   PRIMARY KEY (task_id, company_id)
 );
+CREATE TABLE IF NOT EXISTS skills (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE COLLATE NOCASE
+);
+CREATE TABLE IF NOT EXISTS task_skills (
+  task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  skill_id INTEGER NOT NULL REFERENCES skills(id) ON DELETE CASCADE,
+  PRIMARY KEY (task_id, skill_id)
+);
+CREATE TABLE IF NOT EXISTS person_skills (
+  person_id INTEGER NOT NULL REFERENCES people(id) ON DELETE CASCADE,
+  skill_id INTEGER NOT NULL REFERENCES skills(id) ON DELETE CASCADE,
+  PRIMARY KEY (person_id, skill_id)
+);
 CREATE TABLE IF NOT EXISTS assignments (
   task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
   person_id INTEGER NOT NULL REFERENCES people(id) ON DELETE CASCADE,
@@ -90,7 +104,7 @@ function headerToDate(h) {
   return `${FESTIVAL_YEAR}-${MESES[m[2].toLowerCase()]}-${m[1].padStart(2, '0')}`;
 }
 
-function sectoresDe(equipo) {
+export function sectoresDe(equipo) {
   const s = [];
   if (/CUINA|NETEJA|BAR/.test(equipo)) s.push('cocina_bar');
   if (/TÉCNICA/.test(equipo)) s.push('tecnica');
@@ -182,6 +196,19 @@ function seedTecnica() {
   }
 }
 
+// Aptitudes iniciales (catálogo compartido entre tareas y personas). Del texto libre de la hoja
+// solo se migran las dos que lo dicen explícitamente (sonido, luces); el texto original se conserva.
+function seedSkills() {
+  const ins = db.prepare('INSERT OR IGNORE INTO skills (name) VALUES (?)');
+  for (const n of ['Sonido', 'Iluminación', 'Conducción de trailer', 'Rigging', 'Construcción']) ins.run(n);
+  const id = (n) => db.prepare('SELECT id FROM skills WHERE name = ?').get(n).id;
+  const link = db.prepare('INSERT OR IGNORE INTO person_skills (person_id, skill_id) VALUES (?,?)');
+  for (const p of db.prepare("SELECT id, aptitudes FROM people WHERE aptitudes <> ''").all()) {
+    if (/sonido/i.test(p.aptitudes)) link.run(p.id, id('Sonido'));
+    if (/luces/i.test(p.aptitudes)) link.run(p.id, id('Iluminación'));
+  }
+}
+
 const norm = (s) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 export function suggestCompanies(taskName) {
   const n = norm(taskName);
@@ -220,4 +247,5 @@ export function seedIfEmpty() {
   applySeed('bar-v1', seedBar);
   applySeed('tecnica-v1', seedTecnica);
   applySeed('companias-v1', seedCompanias);
+  applySeed('skills-v1', seedSkills);
 }

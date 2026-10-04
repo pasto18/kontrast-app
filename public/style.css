@@ -96,3 +96,20 @@ dialog h2{margin:0 0 12px}
 .chips-in span{display:inline-flex;gap:4px;align-items:center;background:var(--bg);border:1px solid var(--line);border-radius:99px;padding:1px 4px 1px 9px;color:var(--ink);font-size:13px}
 .chips-in button{border:0;background:none;padding:0 4px;color:var(--mute)}
 .card .foot span:first-child{flex:1;min-width:0;padding-right:8px}.card .n{white-space:nowrap}
+
+.sktag{display:inline-block;font-size:11px;color:var(--accent);margin-top:2px;margin-right:6px;font-weight:600}
+.sktag::before{content:"⚙ "}
+.skill-picker .other{display:flex;gap:4px;margin-top:4px}.skill-picker .other input{flex:1}
+.skill-picker select{margin-top:4px;width:100%}
+.skill-picker .none,.chips-in .none{color:var(--mute)}
+.checks{display:flex;flex-wrap:wrap;gap:4px 12px;color:var(--ink);font-size:14px}
+.checks label{flex-direction:row;align-items:center;gap:5px;color:var(--ink);font-size:14px}
+.hint{font-size:11px;font-weight:400}
+.pdays{display:flex;flex-wrap:wrap;gap:4px}
+.pdays button{display:flex;flex-direction:column;align-items:center;gap:2px;padding:3px 4px;border:0;background:none;font-size:10px;color:var(--mute);line-height:1.1}
+.pdays .sq{width:26px;height:26px}
+.bulk{font-size:12px;display:flex;gap:6px;align-items:center;margin-top:4px}.bulk button{padding:2px 8px}
+button.danger{color:var(--bad);border-color:var(--bad)}
+#person-dialog{max-height:94vh;overflow:auto}
+.apt{display:inline-block;font-size:11px;font-weight:600;padding:0 7px;border-radius:99px;background:color-mix(in srgb,var(--accent) 16%,transparent);color:var(--accent);margin-right:3px}
+.apt-note{color:var(--mute);font-size:12px}

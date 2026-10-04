@@ -17,7 +17,9 @@ let selDay = null, view = store.get('view', 'voluntarios');
 let areas = new Set(store.get('areas', ['cocina', 'bar', 'tecnica']));
 let peopleTeams = new Set(store.get('peopleTeams', []));
 let editingId = null;
-let companies = [], spaces = [], dlgCompanies = [];
+let companies = [], spaces = [], dlgCompanies = [], skills = [];
+const pickers = { task: { ids: [], other: false }, person: { ids: [], other: false } };
+let editingPerson = null, pAv = {};
 const VIEWS = ['voluntarios', 'personas', 'companias', 'espacios'];
 let showOtherTeams = store.get('showOtherTeams', false);
 
@@ -85,17 +87,23 @@ function taskStatus(t) {
   return now >= e ? 'past' : now >= s ? 'now' : 'future';
 }
 
+const skillName = (id) => skills.find((k) => k.id === id)?.name ?? id;
+
 function pickerOptions(t) {
   const assigned = new Set(t.volunteers.map((v) => v.id));
   const busyWith = (p) => tasks.find((o) => o.id !== t.id && overlaps(o, t) && o.volunteers.some((v) => v.id === p.id));
+  const need = t.skills.map((k) => k.id);
+  const matched = (p) => need.filter((id) => p.skill_ids.includes(id));
   const opt = (p) => {
     const b = busyWith(p);
     const teams = teamsOf(p).join('/');
-    return `<option value="${p.id}">${esc(p.nombre)}${teams ? ` · ${esc(teams)}` : ''}${b ? ` ⚠ solapa con ${esc(b.name)}` : ''}</option>`;
+    const m = matched(p).map(skillName).join(', ');
+    return `<option value="${p.id}">${esc(p.nombre)}${teams ? ` · ${esc(teams)}` : ''}${m ? ` · ★ ${esc(m)}` : ''}${b ? ` ⚠ solapa con ${esc(b.name)}` : ''}</option>`;
   };
+  const byMatch = (l) => [...l].sort((a, b) => matched(b).length - matched(a).length);
   const present = people.filter((p) => !assigned.has(p.id) && p.av[t.date] === 1);
-  const groups = [['Equipo coincide', present.filter((p) => fitsArea(p, t.area))]];
-  if (showOtherTeams) groups.push(['Otros equipos', present.filter((p) => !fitsArea(p, t.area))]);
+  const groups = [['Equipo coincide', byMatch(present.filter((p) => fitsArea(p, t.area)))]];
+  if (showOtherTeams) groups.push(['Otros equipos', byMatch(present.filter((p) => !fitsArea(p, t.area)))]);
   return '<option value="">+ Añadir…</option>' + groups.filter(([, l]) => l.length)
     .map(([label, l]) => `<optgroup label="${label}">${l.map(opt).join('')}</optgroup>`).join('');
 }
@@ -123,7 +131,7 @@ function renderTasks() {
       <td>${t.start}${st === 'now' ? '<span class="badge live">EN CURSO</span>' : ''}</td><td>${t.end}</td>
       <td class="num">${fmtDur(t)}</td>
       <td><span class="tag ${t.area}">${esc(cfg.areas[t.area])}</span></td>
-      <td>${esc(t.space)}</td><td><b>${esc(t.name)}</b>${t.companies.length ? `<div>${t.companies.map((c) => `<span class="cotag">${esc(c.name)}</span>`).join("")}</div>` : ""}</td>
+      <td>${esc(t.space)}</td><td><b>${esc(t.name)}</b>${t.skills.length || t.companies.length ? `<div>${t.skills.map((k) => `<span class="sktag">${esc(k.name)}</span>`).join("")}${t.companies.map((c) => `<span class="cotag">${esc(c.name)}</span>`).join("")}</div>` : ""}</td>
       <td class="num nec">${t.needed}</td><td>${esc(t.responsible)}</td>
       <td class="est"><span class="fill ${cls}">${n}/${t.needed}</span></td>
       <td><div class="slots">${slots(t)}</div></td>
@@ -154,16 +162,17 @@ function renderPeople() {
     && (!peopleTeams.size || teamsOf(p).some((t) => peopleTeams.has(t))));
   const days = cfg.days;
   const head = `<thead><tr><th>Nombre</th><th>Grupo</th><th>Equipo</th><th class="num">Dispo</th>
-    ${days.map((d) => `<th class="d" title="${d.label}">${d.dow.slice(0, 1).toUpperCase()}<br>${d.day}</th>`).join('')}<th>Aptitudes</th></tr></thead>`;
+    ${days.map((d) => `<th class="d" title="${d.label}">${d.dow.slice(0, 1).toUpperCase()}<br>${d.day}</th>`).join('')}<th>Aptitudes</th><th></th></tr></thead>`;
   const tot = `<tr class="tot"><td colspan="4" style="text-align:right">Presentes por día (lista filtrada)</td>
-    ${days.map((d) => `<td>${list.filter((p) => p.av[d.date] === 1).length}</td>`).join('')}<td></td></tr>`;
+    ${days.map((d) => `<td>${list.filter((p) => p.av[d.date] === 1).length}</td>`).join('')}<td></td><td></td></tr>`;
   $('#people-table').innerHTML = head + '<tbody>' + tot + list.map((p) => `<tr>
     <td><b>${esc(p.nombre)}</b>${p.por_confirmar ? ' <span class="conf">POR CONFIRMAR</span>' : ''}</td>
     <td>${esc(p.grupo)}</td>
     <td>${teamsOf(p).map((t) => `<span class="eq ${esc(t)}">${esc(t)}</span>`).join('')}</td>
     <td class="num">${p.dispo ?? ''}${p.dispo ? '%' : ''}</td>
     ${days.map((d) => { const v = p.av[d.date]; return `<td class="d"><i class="sq ${v === 1 ? 'on' : v === 0 ? 'off' : 'unk'}" title="${d.label}: ${v === 1 ? 'está' : v === 0 ? 'no está' : 'sin datos'}"></i></td>`; }).join('')}
-    <td>${esc(p.aptitudes)}</td></tr>`).join('') + '</tbody>';
+    <td>${p.skill_ids.map((id) => `<span class="apt">${esc(skillName(id))}</span>`).join('')}${p.aptitudes ? `<span class="apt-note">${esc(p.aptitudes)}</span>` : ''}</td>
+    <td><button class="icon" data-pedit="${p.id}" title="Editar persona">✎</button></td></tr>`).join('') + '</tbody>';
 }
 
 function showView(v) {
@@ -242,6 +251,85 @@ async function openDetail(kind, key) {
   $('#detail-dialog').showModal();
 }
 
+// ---------- Selector de aptitudes (mismo catálogo para tareas y personas) ----------
+function renderSkillPicker(key) {
+  const st = pickers[key];
+  const chips = st.ids.map((id) => `<span>${esc(skillName(id))}<button type="button" data-sk-rm="${key}:${id}" title="Quitar">×</button></span>`).join('') || '<span class="none">Ninguna</span>';
+  const opts = skills.filter((k) => !st.ids.includes(k.id)).map((k) => `<option value="${k.id}">${esc(k.name)}</option>`).join('');
+  $(`#sp-${key}`).innerHTML = `<div class="chips-in">${chips}</div>` + (st.other
+    ? `<div class="other"><input data-sk-input="${key}" placeholder="Nueva aptitud…" maxlength="40"><button type="button" data-sk-save="${key}">Añadir</button><button type="button" data-sk-cancel="${key}" title="Cancelar">×</button></div>`
+    : `<select data-sk-add="${key}"><option value="">+ Añadir aptitud…</option>${opts}<option value="__other">Otro…</option></select>`);
+  if (st.other) $(`[data-sk-input="${key}"]`).focus();
+}
+const renderAllSkillPickers = () => { renderSkillPicker('task'); renderSkillPicker('person'); };
+function setPicker(key, ids) { pickers[key] = { ids: [...ids], other: false }; renderSkillPicker(key); }
+
+async function saveOtherSkill(key) {
+  const name = $(`[data-sk-input="${key}"]`).value.trim();
+  if (!name) return;
+  const sk = await api('/api/skills', 'POST', { name });
+  if (!skills.some((k) => k.id === sk.id)) skills.push(sk);
+  if (!pickers[key].ids.includes(sk.id)) pickers[key].ids.push(sk.id);
+  pickers[key].other = false;
+  renderAllSkillPickers();
+}
+
+// ---------- Diálogo de persona ----------
+const pdlg = $('#person-dialog'), pform = $('#person-form');
+const DEFAULT_TEAMS = ['CUINA', 'NETEJA', 'BAR', 'TÉCNICA', 'VIDEO', 'BILLETERÍA'];
+
+function renderPersonDays() {
+  $('#person-days').innerHTML = cfg.days.map((d) => { const v = pAv[d.date];
+    return `<button type="button" data-pday="${d.date}" title="${d.label}"><span>${d.dow.slice(0, 1).toUpperCase()}${d.day}</span><i class="sq ${v === 1 ? 'on' : v === 0 ? 'off' : 'unk'}"></i></button>`; }).join('');
+}
+
+function openPerson(p) {
+  editingPerson = p ? p.id : null;
+  $('#person-dialog-title').textContent = p ? 'Editar persona' : 'Nueva persona';
+  $('#person-delete').hidden = !p;
+  $('#person-error').textContent = '';
+  const groups = [...new Set(['VOLUNTARIAS', 'CASA', 'SIDE', ...people.map((x) => x.grupo).filter(Boolean)])];
+  pform.elements.grupo.innerHTML = groups.map((g) => `<option>${esc(g)}</option>`).join('');
+  const teams = [...new Set([...DEFAULT_TEAMS, ...people.flatMap(teamsOf)])];
+  const mine = p ? teamsOf(p) : [];
+  $('#person-teams').innerHTML = teams.map((t) => `<label><input type="checkbox" value="${esc(t)}" ${mine.includes(t) ? 'checked' : ''}> ${esc(t)}</label>`).join('');
+  const v = p || { nombre: '', grupo: 'VOLUNTARIAS', dispo: '', aptitudes: '', por_confirmar: 0, skill_ids: [], av: {} };
+  pform.elements.nombre.value = v.nombre;
+  pform.elements.grupo.value = v.grupo || 'VOLUNTARIAS';
+  pform.elements.dispo.value = v.dispo ?? '';
+  pform.elements.aptitudes.value = v.aptitudes;
+  pform.elements.por_confirmar.checked = !!v.por_confirmar;
+  pAv = Object.fromEntries(cfg.days.map((d) => [d.date, v.av[d.date] ?? null]));
+  renderPersonDays();
+  setPicker('person', v.skill_ids);
+  pdlg.showModal();
+}
+
+pform.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const f = pform.elements;
+  const body = { nombre: f.nombre.value, grupo: f.grupo.value, dispo: f.dispo.value, aptitudes: f.aptitudes.value,
+    por_confirmar: f.por_confirmar.checked, av: pAv, skill_ids: pickers.person.ids,
+    equipo: [...document.querySelectorAll('#person-teams input:checked')].map((i) => i.value) };
+  try {
+    if (editingPerson) await api(`/api/people/${editingPerson}`, 'PUT', body); else await api('/api/people', 'POST', body);
+    pdlg.close();
+    await reloadPeople();
+  } catch (err) { $('#person-error').textContent = err.message; }
+});
+$('#person-cancel').onclick = () => pdlg.close();
+$('#person-delete').onclick = async () => {
+  const p = people.find((x) => x.id === editingPerson);
+  if (!confirm(`¿Eliminar a "${p.nombre}"? Se quitará también de las tareas a las que esté asignada/o.`)) return;
+  try { await api(`/api/people/${p.id}`, 'DELETE'); pdlg.close(); await reloadPeople(); await loadTasks(); } catch (err) { $('#person-error').textContent = err.message; }
+};
+async function reloadPeople() {
+  people = await api('/api/people');
+  $('#people-names').innerHTML = people.map((p) => `<option value="${esc(p.nombre)}">`).join('');
+  renderPeople();
+  if (tasks.length) renderTasks();
+}
+
 // ---------- Diálogo de tarea ----------
 function renderDlgCompanies() {
   const name = (id) => companies.find((c) => c.id === id)?.name ?? id;
@@ -257,6 +345,7 @@ function openTask(t) {
   $('#repeat-wrap').hidden = !!t;
   $('#task-error').textContent = '';
   dlgCompanies = t ? t.companies.map((c) => c.id) : [];
+  setPicker('task', t ? t.skills.map((k) => k.id) : []);
   renderDlgCompanies();
   const v = t || { area: [...areas][0] || 'cocina', date: selDay, start: '', end: '', name: '', space: '', needed: 1, responsible: '' };
   for (const k of ['area', 'date', 'start', 'end', 'name', 'space', 'needed', 'responsible']) form.elements[k].value = v[k];
@@ -268,6 +357,7 @@ form.addEventListener('submit', async (e) => {
   const body = Object.fromEntries(new FormData(form));
   body.repeatAllDays = form.elements.repeatAllDays.checked;
   body.company_ids = dlgCompanies;
+  body.skill_ids = pickers.task.ids;
   try {
     if (editingId) await api(`/api/tasks/${editingId}`, 'PUT', body); else await api('/api/tasks', 'POST', body);
     dlg.close();
@@ -288,6 +378,12 @@ document.addEventListener('click', (e) => {
   else if (d.edit) openTask(tasks.find((t) => t.id === +d.edit));
   else if (d.del) { const t = tasks.find((x) => x.id === +d.del); if (confirm(`¿Eliminar "${t.name}" (${t.start}–${t.end})? Se perderán sus voluntarios asignados.`)) run(api(`/api/tasks/${t.id}`, 'DELETE').then(loadTasks)); }
   else if (d.clock) setClock(clockMs + d.clock * 60000);
+  else if (d.skRm) { const [k, id] = d.skRm.split(':'); pickers[k].ids = pickers[k].ids.filter((x) => x !== +id); renderSkillPicker(k); }
+  else if (d.skSave) run(saveOtherSkill(d.skSave));
+  else if (d.skCancel) { pickers[d.skCancel].other = false; renderSkillPicker(d.skCancel); }
+  else if (d.pedit) openPerson(people.find((p) => p.id === +d.pedit));
+  else if (d.pday) { const c = pAv[d.pday]; pAv[d.pday] = c === null ? 1 : c === 1 ? 0 : null; renderPersonDays(); }
+  else if (d.pall !== undefined) { for (const day of cfg.days) pAv[day.date] = d.pall === '' ? null : +d.pall; renderPersonDays(); }
   else if (d.company) run(openDetail('company', d.company));
   else if (d.space) run(openDetail('space', d.space));
   else if (d.coRm) { dlgCompanies = dlgCompanies.filter((id) => id !== +d.coRm); renderDlgCompanies(); }
@@ -295,6 +391,11 @@ document.addEventListener('click', (e) => {
 });
 document.addEventListener('change', (e) => {
   const s = e.target;
+  if (s.dataset.skAdd !== undefined && s.value) {
+    const k = s.dataset.skAdd;
+    if (s.value === '__other') pickers[k].other = true; else pickers[k].ids.push(+s.value);
+    renderSkillPicker(k); return;
+  }
   if (s.id === 'task-company-add' && s.value) { dlgCompanies.push(+s.value); renderDlgCompanies(); return; }
   if (s.dataset.add && s.value) run(api(`/api/tasks/${s.dataset.add}/volunteers`, 'POST', { person_id: +s.value })).finally(loadTasks);
 });
@@ -302,6 +403,10 @@ $('#others-toggle').onclick = () => { showOtherTeams = !showOtherTeams; store.se
 $('#detail-close').onclick = () => $('#detail-dialog').close();
 $('#companies-search').oninput = renderCompanies;
 $('#spaces-search').oninput = renderSpaces;
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && e.target.dataset?.skInput) { e.preventDefault(); run(saveOtherSkill(e.target.dataset.skInput)); }
+});
+$('#add-person').onclick = () => openPerson(null);
 $('#add-task').onclick = () => openTask(null);
 $('#people-search').oninput = renderPeople;
 $('#clock-toggle').onclick = (e) => { e.stopPropagation(); const p = $('#clock-panel'); p.hidden = !p.hidden; $('#clock-toggle').setAttribute('aria-expanded', !p.hidden); };
@@ -314,6 +419,7 @@ $('#clock-input').onchange = (e) => { const ms = Date.parse(e.target.value + ':0
 // ---------- Arranque ----------
 (async () => {
   [cfg, people] = await Promise.all([api('/api/config'), api('/api/people')]);
+  skills = await api('/api/skills');
   await refreshCatalog();
   const fill = (sel, items) => { sel.innerHTML = items.map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join(''); };
   fill(form.elements.area, Object.entries(cfg.areas));
@@ -321,6 +427,7 @@ $('#clock-input').onchange = (e) => { const ms = Date.parse(e.target.value + ':0
   $('#people-names').innerHTML = people.map((p) => `<option value="${esc(p.nombre)}">`).join('');
   $('#clock-input').value = clockStr();
   $('#clock-toggle').title = `Reloj simulado: ${clockStr().replace('T', ' ')}`;
+  renderAllSkillPickers();
   renderAreaFilter(); renderPeopleFilter(); renderOthersToggle();
   const saved = store.get('day', null);
   const start = cfg.days.some((d) => d.date === clockDate()) ? clockDate() : saved && cfg.days.some((d) => d.date === saved) ? saved : cfg.days[0].date;
