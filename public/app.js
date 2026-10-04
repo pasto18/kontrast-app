@@ -443,10 +443,9 @@ function openPerson(p) {
   const teams = [...new Set([...DEFAULT_TEAMS, ...people.flatMap(teamsOf)])];
   const mine = p ? teamsOf(p) : [];
   $('#person-teams').innerHTML = teams.map((t) => `<label><input type="checkbox" value="${esc(t)}" ${mine.includes(t) ? 'checked' : ''}> ${esc(t)}</label>`).join('');
-  const v = p || { nombre: '', grupo: 'VOLUNTARIAS', dispo: '', aptitudes: '', por_confirmar: 0, skill_ids: [], av: {} };
+  const v = p || { nombre: '', grupo: 'VOLUNTARIAS', aptitudes: '', por_confirmar: 0, skill_ids: [], av: {} };
   pform.elements.nombre.value = v.nombre;
   pform.elements.grupo.value = v.grupo || 'VOLUNTARIAS';
-  pform.elements.dispo.value = v.dispo ?? '';
   pform.elements.aptitudes.value = v.aptitudes;
   pform.elements.por_confirmar.checked = !!v.por_confirmar;
   pAv = Object.fromEntries(cfg.days.map((d) => [d.date, v.av[d.date] ?? null]));
@@ -458,7 +457,7 @@ function openPerson(p) {
 pform.addEventListener('submit', async (e) => {
   e.preventDefault();
   const f = pform.elements;
-  const body = { nombre: f.nombre.value, grupo: f.grupo.value, dispo: f.dispo.value, aptitudes: f.aptitudes.value,
+  const body = { nombre: f.nombre.value, grupo: f.grupo.value, aptitudes: f.aptitudes.value,
     por_confirmar: f.por_confirmar.checked, av: pAv, skill_ids: pickers.person.ids,
     equipo: [...document.querySelectorAll('#person-teams input:checked')].map((i) => i.value) };
   try {

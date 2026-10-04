@@ -19,7 +19,6 @@ CREATE TABLE IF NOT EXISTS people (
   grupo TEXT,                 -- VOLUNTARIAS / CASA / SIDE
   equipo TEXT NOT NULL DEFAULT '',   -- CUINA, NETEJA, BAR, TÉCNICA... separados por coma
   sectores TEXT NOT NULL DEFAULT '', -- cocina_bar, tecnica (derivado de equipo)
-  dispo INTEGER,              -- 50 / 100
   aptitudes TEXT NOT NULL DEFAULT '',
   por_confirmar INTEGER NOT NULL DEFAULT 0
 );
@@ -84,6 +83,9 @@ CREATE TABLE IF NOT EXISTS assignments (
 );
 `);
 
+// La "disponibilidad" 50/100 de la hoja ya no se usa: solo importa el balance entre grupos.
+if (db.prepare("SELECT 1 FROM pragma_table_info('people') WHERE name = 'dispo'").get()) db.exec('ALTER TABLE people DROP COLUMN dispo');
+
 function parseCsvLine(line) {
   const out = [];
   let cur = '', q = false;
@@ -120,15 +122,14 @@ function seedPeople() {
   const header = parseCsvLine(lines[0]);
   const dateCols = header.map((h, i) => ({ i, date: headerToDate(h) })).filter((c) => c.date);
   const aptCol = header.findIndex((h) => h.trim().toLowerCase() === 'aptitudes');
-  const insP = db.prepare('INSERT INTO people (nombre, grupo, equipo, sectores, dispo, aptitudes, por_confirmar) VALUES (?,?,?,?,?,?,?)');
+  const insP = db.prepare('INSERT INTO people (nombre, grupo, equipo, sectores, aptitudes, por_confirmar) VALUES (?,?,?,?,?,?)');
   const insA = db.prepare('INSERT INTO availability (person_id, date, present) VALUES (?,?,?)');
   lines.slice(1).forEach((line, idx) => {
     const c = parseCsvLine(line);
     const nombre = (c[0] || '').trim() || `Sin nombre (línea ${idx + 2})`;
     const equipo = (c[2] || '').split(',').map((s) => s.trim()).filter(Boolean).join(', ');
-    const dispo = c[3] && !isNaN(+c[3]) ? +c[3] : null;
     const porConfirmar = dateCols.some((d) => /confirmar/i.test(c[d.i] || '')) ? 1 : 0;
-    const { lastInsertRowid: id } = insP.run(nombre, (c[1] || '').trim(), equipo, sectoresDe(equipo), dispo, (c[aptCol] || '').trim(), porConfirmar);
+    const { lastInsertRowid: id } = insP.run(nombre, (c[1] || '').trim(), equipo, sectoresDe(equipo), (c[aptCol] || '').trim(), porConfirmar);
     for (const d of dateCols) {
       const v = (c[d.i] || '').trim();
       insA.run(id, d.date, v === '1' ? 1 : v === '0' ? 0 : null);

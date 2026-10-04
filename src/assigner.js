@@ -13,8 +13,8 @@ export const range = (t) => { const s0 = toMin(t.start), s = s0 < NIGHT ? s0 + 1
 export const overlap = (a, b) => a[0] < b[1] && b[0] < a[1];
 
 function loadPeople() {
-  const people = new Map(db.prepare('SELECT id, nombre, equipo, dispo FROM people').all().map((p) => [p.id, {
-    id: p.id, nombre: p.nombre, dispo: p.dispo ?? 0, av: {}, skills: new Set(),
+  const people = new Map(db.prepare('SELECT id, nombre, equipo FROM people').all().map((p) => [p.id, {
+    id: p.id, nombre: p.nombre, av: {}, skills: new Set(),
     teams: new Set(p.equipo.split(',').map((x) => x.trim()).filter(Boolean)),
   }]));
   for (const r of db.prepare('SELECT person_id, date, present FROM availability').all()) people.get(r.person_id).av[r.date] = r.present;
@@ -89,7 +89,7 @@ export function autoAssign({ dates, areas, replace }) {
           const covered = new Set([...c.who].flatMap((pid) => [...byId.get(pid).skills]));
           const score = (p) => c.skills.filter((s) => p.skills.has(s)).length + 10 * c.skills.filter((s) => p.skills.has(s) && !covered.has(s)).length;
           const best = c.pool.filter((p) => eligible(p, c))
-            .sort((a, b) => score(b) - score(a) || balClass(a, c) - balClass(b, c) || gap(a, c) - gap(b, c) || lo(a) - lo(b) || b.dispo - a.dispo || a.id - b.id)[0];
+            .sort((a, b) => score(b) - score(a) || balClass(a, c) - balClass(b, c) || gap(a, c) - gap(b, c) || lo(a) - lo(b) || a.id - b.id)[0];
           if (!best) break;
           give(best, c);
         }
@@ -99,7 +99,7 @@ export function autoAssign({ dates, areas, replace }) {
       for (const c of phase2) {
         while (c.missing > 0) {
           const best = c.pool.filter((p) => eligible(p, c))
-            .sort((a, b) => balClass(a, c) - balClass(b, c) || gap(a, c) - gap(b, c) || lo(a) - lo(b) || a.teams.size - b.teams.size || b.dispo - a.dispo || a.id - b.id)[0];
+            .sort((a, b) => balClass(a, c) - balClass(b, c) || gap(a, c) - gap(b, c) || lo(a) - lo(b) || a.teams.size - b.teams.size || a.id - b.id)[0];
           if (!best) break;
           give(best, c);
         }

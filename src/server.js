@@ -42,8 +42,6 @@ function readPerson(body) {
   const nombre = String(body.nombre ?? '').trim();
   if (!nombre) return { error: 'La persona necesita un nombre' };
   const equipo = [...new Set((Array.isArray(body.equipo) ? body.equipo : []).map((x) => String(x).trim()).filter(Boolean))].join(', ');
-  const dispo = body.dispo === '' || body.dispo == null ? null : Number(body.dispo);
-  if (dispo !== null && (!Number.isInteger(dispo) || dispo < 0 || dispo > 100)) return { error: 'Disponibilidad: entero entre 0 y 100' };
   const av = {};
   for (const d of DAYS) {
     const v = body.av?.[d.date];
@@ -51,7 +49,7 @@ function readPerson(body) {
   }
   const ids = skillIds(body);
   if (!allSkillsExist(ids)) return { error: 'Aptitud no encontrada' };
-  return { p: { nombre, grupo: String(body.grupo ?? '').trim(), equipo, sectores: sectoresDe(equipo), dispo,
+  return { p: { nombre, grupo: String(body.grupo ?? '').trim(), equipo, sectores: sectoresDe(equipo),
     aptitudes: String(body.aptitudes ?? '').trim(), por_confirmar: body.por_confirmar ? 1 : 0 }, av, ids };
 }
 
@@ -68,8 +66,8 @@ app.post('/api/people', (req, res) => {
   if (error) return bad(res, error);
   db.exec('BEGIN');
   try {
-    const id = Number(db.prepare('INSERT INTO people (nombre, grupo, equipo, sectores, dispo, aptitudes, por_confirmar) VALUES (?,?,?,?,?,?,?)')
-      .run(p.nombre, p.grupo, p.equipo, p.sectores, p.dispo, p.aptitudes, p.por_confirmar).lastInsertRowid);
+    const id = Number(db.prepare('INSERT INTO people (nombre, grupo, equipo, sectores, aptitudes, por_confirmar) VALUES (?,?,?,?,?,?)')
+      .run(p.nombre, p.grupo, p.equipo, p.sectores, p.aptitudes, p.por_confirmar).lastInsertRowid);
     savePersonRelations(id, av, ids);
     db.exec('COMMIT');
     res.status(201).json({ id });
@@ -83,8 +81,8 @@ app.put('/api/people/:id', (req, res) => {
   if (error) return bad(res, error);
   db.exec('BEGIN');
   try {
-    db.prepare('UPDATE people SET nombre=?, grupo=?, equipo=?, sectores=?, dispo=?, aptitudes=?, por_confirmar=? WHERE id=?')
-      .run(p.nombre, p.grupo, p.equipo, p.sectores, p.dispo, p.aptitudes, p.por_confirmar, id);
+    db.prepare('UPDATE people SET nombre=?, grupo=?, equipo=?, sectores=?, aptitudes=?, por_confirmar=? WHERE id=?')
+      .run(p.nombre, p.grupo, p.equipo, p.sectores, p.aptitudes, p.por_confirmar, id);
     savePersonRelations(id, av, ids);
     db.exec('COMMIT');
     res.json({ ok: true });
