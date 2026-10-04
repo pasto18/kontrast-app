@@ -24,7 +24,7 @@ app.get('/api/people', (_req, res) => {
 app.get('/api/tasks', (req, res) => {
   const { date } = req.query;
   if (!DAYS.some((d) => d.date === date)) return bad(res, 'Fecha fuera del festival');
-  const tasks = db.prepare('SELECT * FROM tasks WHERE date = ? ORDER BY start, end, id').all(date);
+  const tasks = db.prepare(`SELECT * FROM tasks WHERE date = ? ORDER BY start < '06:00', start, end, id`).all(date);
   const vols = db.prepare(`SELECT a.task_id, p.id, p.nombre FROM assignments a JOIN people p ON p.id = a.person_id
     JOIN tasks t ON t.id = a.task_id WHERE t.date = ? ORDER BY p.nombre`).all(date);
   const by = new Map(tasks.map((t) => [t.id, []]));
@@ -40,7 +40,7 @@ function readTask(body) {
   };
   if (!DAYS.some((d) => d.date === t.date)) return { error: 'Fecha fuera del festival' };
   if (!HHMM.test(t.start) || !HHMM.test(t.end)) return { error: 'Hora inválida (HH:MM)' };
-  if (t.end <= t.start) return { error: 'La hora final debe ser posterior a la de inicio' };
+  if (t.end === t.start) return { error: 'La hora final no puede coincidir con la de inicio' };
   if (!AREAS[t.area]) return { error: 'Área inválida' };
   if (!t.name) return { error: 'La tarea necesita un nombre' };
   if (!Number.isInteger(t.needed) || t.needed < 1 || t.needed > 99) return { error: 'Voluntarios necesarios: entero entre 1 y 99' };

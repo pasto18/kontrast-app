@@ -25,7 +25,6 @@ let clockMs = Date.parse(store.get('clock', CLOCK_START) + ':00Z');
 let playing = false, timer = null;
 const clockStr = () => new Date(clockMs).toISOString().slice(0, 16);
 const clockDate = () => clockStr().slice(0, 10);
-const clockMin = () => { const [h, m] = clockStr().slice(11).split(':'); return +h * 60 + +m; };
 const toMin = (hhmm) => { const [h, m] = hhmm.split(':'); return +h * 60 + +m; };
 
 function setClock(ms, { follow = true } = {}) {
@@ -66,15 +65,21 @@ function renderDays() {
 }
 
 // ---------- Tabla de tareas ----------
-const fmtDur = (s, e) => ((toMin(e) - toMin(s)) / 60).toFixed(2).replace('.', ',');
-const overlaps = (a, b) => a.start < b.end && b.start < a.end;
+// Las tareas pueden cruzar la medianoche (23:00–1:00) y las que empiezan antes de las 06:00
+// son la madrugada del día siguiente, aunque figuren en el día del turno de noche.
+const NIGHT = 360;
+const durMin = (t) => (toMin(t.end) - toMin(t.start) + 1440) % 1440;
+const fmtDur = (t) => (durMin(t) / 60).toFixed(2).replace('.', ',');
+const dayMin = (date) => Date.parse(date + 'T00:00:00Z') / 60000;
+function absRange(t) {
+  const s0 = toMin(t.start), s = dayMin(t.date) + (s0 < NIGHT ? s0 + 1440 : s0);
+  return [s, s + durMin(t)];
+}
+const overlaps = (a, b) => { const [a0, a1] = absRange(a), [b0, b1] = absRange(b); return a0 < b1 && b0 < a1; };
 
 function taskStatus(t) {
-  const cd = clockDate();
-  if (t.date < cd) return 'past';
-  if (t.date > cd) return 'future';
-  const m = clockMin();
-  return m >= toMin(t.end) ? 'past' : m >= toMin(t.start) ? 'now' : 'future';
+  const now = clockMs / 60000, [s, e] = absRange(t);
+  return now >= e ? 'past' : now >= s ? 'now' : 'future';
 }
 
 function pickerOptions(t) {
@@ -113,7 +118,7 @@ function renderTasks() {
     const cls = n === 0 ? 'f0' : n < t.needed ? 'f1' : 'f2';
     return `<tr class="${st === 'future' ? '' : st}">
       <td>${t.start}${st === 'now' ? '<span class="badge live">EN CURSO</span>' : ''}</td><td>${t.end}</td>
-      <td class="num">${fmtDur(t.start, t.end)}</td>
+      <td class="num">${fmtDur(t)}</td>
       <td><span class="tag ${t.area}">${esc(cfg.areas[t.area])}</span></td>
       <td>${esc(t.space)}</td><td><b>${esc(t.name)}</b></td>
       <td class="num nec">${t.needed}</td><td>${esc(t.responsible)}</td>

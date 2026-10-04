@@ -6,6 +6,7 @@ import { DAYS, COCINA_FIJAS, FESTIVAL_YEAR } from './config.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const DB_PATH = process.env.DB_PATH || path.join(root, 'data', 'kontrast.db');
+const BAR_CSV_PATH = path.join(root, 'data', 'seed', 'bar_tareas.csv');
 const CSV_PATH = path.join(root, 'data', 'seed', 'voluntarios.csv');
 
 export const db = new DatabaseSync(DB_PATH);
@@ -98,9 +99,45 @@ function seedPeople() {
   });
 }
 
-function seedTasks() {
+function seedCocina() {
   const ins = db.prepare('INSERT INTO tasks (date, start, end, area, space, name, needed) VALUES (?,?,?,?,?,?,?)');
   for (const d of DAYS) for (const t of COCINA_FIJAS) ins.run(d.date, t.start, t.end, 'cocina', 'Cocina', t.name, t.needed);
+}
+
+// "viernes-10" → fecha del festival; "1:00" / "5" → "01:00" / "05:00"
+function normTime(v) {
+  const m = /^(\d{1,2})(?::(\d{2}))?$/.exec((v || '').trim());
+  return m ? `${m[1].padStart(2, '0')}:${m[2] || '00'}` : null;
+}
+
+// Tareas de Bar (hoja de 2026 adaptada a las fechas simuladas). Se ignoran las asignaciones.
+function seedBar() {
+  const lines = fs.readFileSync(BAR_CSV_PATH, 'utf8').split(/\r?\n/).filter((l) => l.trim());
+  const h = parseCsvLine(lines[0]).map((x) => x.trim());
+  const col = (n) => h.indexOf(n);
+  const [cDia, cIni, cFin, cEsp, cVol] = ['Dia', 'Hora inicio', 'Hora final', 'BAR', '# VOL'].map(col);
+  const ins = db.prepare('INSERT INTO tasks (date, start, end, area, space, name, needed) VALUES (?,?,?,?,?,?,?)');
+  let prev = null;
+  for (const line of lines.slice(1)) {
+    const c = parseCsvLine(line);
+    const day = DAYS.find((d) => d.day === +c[cDia].split('-')[1]);
+    if (!day) { console.warn(`Bar: día no reconocido "${c[cDia]}"`); continue; }
+    const end = normTime(c[cFin]);
+    // Una hora de inicio rota (#REF!) se completa con el final de la tarea anterior del mismo día.
+    let start = normTime(c[cIni]);
+    if (!start && prev && prev.date === day.date) { start = prev.end; console.warn(`Bar: ${c[cDia]} sin hora de inicio, se usa ${start}`); }
+    if (!start || !end || start === end) { console.warn(`Bar: fila omitida (${line})`); continue; }
+    ins.run(day.date, start, end, 'bar', `Bar ${c[cEsp].trim()}`, 'Turno de bar', +c[cVol] || 1);
+    prev = { date: day.date, end };
+  }
+}
+
+// Cada carga inicial se aplica una sola vez (así borrar tareas no las hace reaparecer).
+db.exec('CREATE TABLE IF NOT EXISTS seeds (name TEXT PRIMARY KEY)');
+function applySeed(name, fn) {
+  if (db.prepare('SELECT 1 FROM seeds WHERE name = ?').get(name)) return;
+  db.exec('BEGIN');
+  try { fn(); db.prepare('INSERT INTO seeds (name) VALUES (?)').run(name); db.exec('COMMIT'); } catch (e) { db.exec('ROLLBACK'); throw e; }
 }
 
 export function seedIfEmpty() {
@@ -108,8 +145,7 @@ export function seedIfEmpty() {
     db.exec('BEGIN');
     try { seedPeople(); db.exec('COMMIT'); } catch (e) { db.exec('ROLLBACK'); throw e; }
   }
-  if (db.prepare('SELECT COUNT(*) n FROM tasks').get().n === 0) {
-    db.exec('BEGIN');
-    try { seedTasks(); db.exec('COMMIT'); } catch (e) { db.exec('ROLLBACK'); throw e; }
-  }
+  const hadTasks = db.prepare('SELECT COUNT(*) n FROM tasks').get().n > 0;
+  applySeed('cocina-v1', () => { if (!hadTasks) seedCocina(); });
+  applySeed('bar-v1', seedBar);
 }
