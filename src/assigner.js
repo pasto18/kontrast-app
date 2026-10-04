@@ -4,7 +4,7 @@
 // Siempre: la persona está ese día, es del equipo del área, no se solapa con otra tarea suya
 // y no supera MAX_DAILY_MINUTES de trabajo ese día. Lo que no se pueda cubrir se deja vacío.
 import { db } from './db.js';
-import { AREA_TEAMS, AREAS, MAX_DAILY_MINUTES as CAP } from './config.js';
+import { AREA_TEAMS, AREAS, AREA_GROUP, MAX_DAILY_MINUTES as CAP } from './config.js';
 
 const NIGHT = 360; // los turnos que empiezan antes de las 06:00 son madrugada del día siguiente
 const toMin = (h) => +h.slice(0, 2) * 60 + +h.slice(3);
@@ -101,14 +101,18 @@ export function autoAssign({ dates, areas, replace }) {
   return result;
 }
 
-// Minutos trabajados por persona y día (todas las áreas, según el día en que figura cada tarea).
+// Minutos trabajados: por persona y día (todas las áreas, según el día en que figura cada tarea)
+// y por persona y grupo (cb = Bar/Cocina/Limpieza, t = Técnica) en todo el festival.
 export function workload() {
-  const out = {};
-  for (const r of db.prepare('SELECT a.person_id, t.date, t.start, t.end FROM assignments a JOIN tasks t ON t.id = a.task_id').all()) {
-    const days = out[r.person_id] ||= {};
-    days[r.date] = (days[r.date] || 0) + durMin(r);
+  const days = {}, groups = {};
+  for (const r of db.prepare('SELECT a.person_id, t.date, t.start, t.end, t.area FROM assignments a JOIN tasks t ON t.id = a.task_id').all()) {
+    const m = durMin(r);
+    const d = days[r.person_id] ||= {};
+    d[r.date] = (d[r.date] || 0) + m;
+    const g = groups[r.person_id] ||= { cb: 0, t: 0 };
+    g[AREA_GROUP[r.area]] += m;
   }
-  return out;
+  return { days, groups };
 }
 
 const order = (a, b) => a.date.localeCompare(b.date) || (a.start < '06:00') - (b.start < '06:00') || a.start.localeCompare(b.start);

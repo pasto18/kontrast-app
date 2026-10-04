@@ -171,3 +171,9 @@ tr.flash{animation:flash 1.6s}
 /* mismas medidas con y sin carga horaria */
 #people-table th.d,#people-table td.d{width:36px;min-width:36px;max-width:36px;padding:4px 1px;overflow:hidden}
 #people-table tr.tot td.d,#people-table tr.tot td:not([colspan]){font-size:10px;padding:2px 0;white-space:nowrap}
+
+.balc{white-space:nowrap}
+.bal{display:inline-block;font-size:11px;font-weight:700;padding:0 6px;border-radius:5px;margin-right:3px;color:#fff}
+.bal.cb{background:#c2410c}.bal.t{background:#0b7285}
+.baldiff{font-size:11px;font-weight:700;color:var(--mute)}.baldiff.cb{color:#c2410c}.baldiff.t{color:#0b7285}
+.aptc{white-space:normal;min-width:130px;max-width:210px}

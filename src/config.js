@@ -37,3 +37,6 @@ export const COCINA_FIJAS = [
 export const AREA_TEAMS = { cocina: ['CUINA', 'NETEJA'], bar: ['BAR'], tecnica: ['TÉCNICA'] };
 // Tope de horas que una persona puede trabajar en un día (lo respeta el asignador automático).
 export const MAX_DAILY_MINUTES = 240;
+
+// Los dos grandes grupos de la hoja de voluntarios: Bar/Neteja/Cuina ("cb") y Técnica ("t").
+export const AREA_GROUP = { cocina: 'cb', bar: 'cb', tecnica: 't' };
