@@ -268,13 +268,6 @@ function renderPeopleFilter() {
 }
 
 const fmtH = (min) => (min / 60).toFixed(2).replace(/\.?0+$/, '').replace('.', ',');
-function peopleLegend() {
-  $('#load-toggle').classList.toggle('active', loadMode);
-  $('#people-legend').innerHTML = loadMode
-    ? '<i class="sq off"></i> no está <i class="sq bone"></i> está, sin horas <i class="sq ok"></i> &lt; 4 h <i class="sq full"></i> 4 h <i class="sq over"></i> &gt; 4 h'
-    : '<i class="sq on"></i> está <i class="sq off"></i> no está <i class="sq unk"></i> sin datos';
-}
-
 function daySquare(p, d) {
   const v = p.av[d.date], m = workload[p.id]?.[d.date] || 0;
   if (!loadMode) return `<i class="sq hrs ${v === 1 ? 'on' : v === 0 ? 'off' : 'unk'}" title="${d.label}: ${v === 1 ? 'está' : v === 0 ? 'no está' : 'sin datos'}"></i>`;
@@ -286,7 +279,7 @@ function daySquare(p, d) {
 async function refreshWorkload() { workload = await api('/api/workload'); }
 
 function renderPeople() {
-  peopleLegend();
+  $('#load-toggle').classList.toggle('active', loadMode);
   const q = $('#people-search').value.trim().toLowerCase();
   const list = people.filter((p) => (!q || p.nombre.toLowerCase().includes(q))
     && (!peopleTeams.size || teamsOf(p).some((t) => peopleTeams.has(t))));
