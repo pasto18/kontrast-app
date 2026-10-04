@@ -36,7 +36,7 @@ td.wrap{white-space:normal}
 tr.past{opacity:.5}tr.now{background:color-mix(in srgb,var(--accent) 12%,transparent);box-shadow:inset 4px 0 0 var(--accent)}
 .empty{padding:30px;text-align:center;color:var(--mute)}
 .tag{display:inline-block;padding:1px 8px;border-radius:99px;font-size:11px;font-weight:600;color:#fff}
-.tag.cocina{background:#c2410c}.tag.bar{background:#7048e8}.tag.tecnica{background:#0b7285}
+.tag.cocina{background:#c2410c}.tag.bar{background:#7048e8}.tag.tecnica{background:#0b7285}.tag.taquilla{background:#b08900}
 .badge{display:inline-block;padding:1px 7px;border-radius:99px;font-size:11px;font-weight:700;margin-left:6px}
 .badge.live{background:var(--accent);color:#fff}
 .fill{font-variant-numeric:tabular-nums;font-weight:700;border-radius:6px;padding:1px 7px}

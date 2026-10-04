@@ -7,7 +7,8 @@ const store = {
 };
 
 // ---------- Equipos ↔ áreas ----------
-const AREA_TEAMS = { cocina: ['CUINA', 'NETEJA'], bar: ['BAR'], tecnica: ['TÉCNICA'] };
+const AREA_TEAMS = { cocina: ['CUINA', 'NETEJA'], bar: ['BAR'], tecnica: ['TÉCNICA'], taquilla: ['TAQUILLA'] };
+const STRICT_AREAS = ['taquilla']; // solo personas de su equipo
 const teamsOf = (p) => p.equipo.split(',').map((s) => s.trim()).filter(Boolean);
 const fitsArea = (p, area) => teamsOf(p).some((t) => AREA_TEAMS[area].includes(t));
 
@@ -15,7 +16,7 @@ const fitsArea = (p, area) => teamsOf(p).some((t) => AREA_TEAMS[area].includes(t
 let cfg, people = [], tasks = [];
 let selDay = null, view = store.get('view', 'voluntarios');
 let areas = new Set(store.get('areas', ['cocina', 'bar', 'tecnica']));
-let peopleTeams = new Set(store.get('peopleTeams', []));
+let peopleTeams = new Set(store.get('peopleTeams', []).map((x) => (x === 'BILLETERÍA' ? 'TAQUILLA' : x)));
 let editingId = null;
 let companies = [], spaces = [], dlgCompanies = [], skills = [];
 const pickers = { task: { ids: [], other: false }, person: { ids: [], other: false } };
@@ -114,7 +115,7 @@ function pickerOptions(t) {
   const byMatch = (l) => [...l].sort((a, b) => matched(b).length - matched(a).length);
   const present = people.filter((p) => !assigned.has(p.id) && p.av[t.date] === 1);
   const groups = [['Equipo coincide', byMatch(present.filter((p) => fitsArea(p, t.area)))]];
-  if (showOtherTeams) groups.push(['Otros equipos', byMatch(present.filter((p) => !fitsArea(p, t.area)))]);
+  if (showOtherTeams && !STRICT_AREAS.includes(t.area)) groups.push(['Otros equipos', byMatch(present.filter((p) => !fitsArea(p, t.area)))]);
   return '<option value="">+ Añadir…</option>' + groups.filter(([, l]) => l.length)
     .map(([label, l]) => `<optgroup label="${label}">${l.map(opt).join('')}</optgroup>`).join('');
 }
@@ -265,7 +266,7 @@ function renderAreaFilter() {
 
 // ---------- Personas ----------
 function renderPeopleFilter() {
-  $('#people-filter').innerHTML = ['CUINA', 'NETEJA', 'BAR', 'TÉCNICA', 'VIDEO', 'BILLETERÍA']
+  $('#people-filter').innerHTML = ['CUINA', 'NETEJA', 'BAR', 'TÉCNICA', 'VIDEO', 'TAQUILLA']
     .map((t) => `<button data-team="${t}" class="${peopleTeams.has(t) ? 'active' : ''}">${t}</button>`).join('');
 }
 
@@ -427,7 +428,7 @@ async function saveOtherSkill(key) {
 
 // ---------- Diálogo de persona ----------
 const pdlg = $('#person-dialog'), pform = $('#person-form');
-const DEFAULT_TEAMS = ['CUINA', 'NETEJA', 'BAR', 'TÉCNICA', 'VIDEO', 'BILLETERÍA'];
+const DEFAULT_TEAMS = ['CUINA', 'NETEJA', 'BAR', 'TÉCNICA', 'VIDEO', 'TAQUILLA'];
 
 function renderPersonDays() {
   $('#person-days').innerHTML = cfg.days.map((d) => { const v = pAv[d.date];
@@ -662,6 +663,9 @@ $('#clock-input').onchange = (e) => { const ms = Date.parse(e.target.value + ':0
   $('#clock-input').value = clockStr();
   $('#clock-toggle').title = `Reloj simulado: ${clockStr().replace('T', ' ')}`;
   renderAllSkillPickers();
+  const known = new Set(store.get('knownAreas', ['cocina', 'bar', 'tecnica']));
+  for (const k of Object.keys(cfg.areas)) if (!known.has(k)) areas.add(k);
+  store.set('knownAreas', Object.keys(cfg.areas)); store.set('areas', [...areas]);
   renderAreaFilter(); renderPeopleFilter(); renderOthersToggle();
   const saved = store.get('day', null);
   const start = cfg.days.some((d) => d.date === clockDate()) ? clockDate() : saved && cfg.days.some((d) => d.date === saved) ? saved : cfg.days[0].date;

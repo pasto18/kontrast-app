@@ -2,7 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { DAYS, COCINA_FIJAS, FESTIVAL_YEAR } from './config.js';
+import { DAYS, COCINA_FIJAS, FESTIVAL_YEAR, TAQUILLA, SIN_TAQUILLA } from './config.js';
 import { PROGRAMA, REGLAS_TAREAS } from './programa.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -86,6 +86,9 @@ CREATE TABLE IF NOT EXISTS assignments (
 // La "disponibilidad" 50/100 de la hoja ya no se usa: solo importa el balance entre grupos.
 if (db.prepare("SELECT 1 FROM pragma_table_info('people') WHERE name = 'dispo'").get()) db.exec('ALTER TABLE people DROP COLUMN dispo');
 
+// El equipo "BILLETERÍA" pasa a llamarse TAQUILLA en toda la aplicación.
+db.exec("UPDATE people SET equipo = REPLACE(REPLACE(equipo, 'BILLETERÍA', 'TAQUILLA'), 'BILLETERIA', 'TAQUILLA') WHERE equipo LIKE '%BILLETER%'");
+
 function parseCsvLine(line) {
   const out = [];
   let cur = '', q = false;
@@ -127,7 +130,7 @@ function seedPeople() {
   lines.slice(1).forEach((line, idx) => {
     const c = parseCsvLine(line);
     const nombre = (c[0] || '').trim() || `Sin nombre (línea ${idx + 2})`;
-    const equipo = (c[2] || '').split(',').map((s) => s.trim()).filter(Boolean).join(', ');
+    const equipo = (c[2] || '').split(',').map((s) => s.trim().replace(/^BILLETER[IÍ]A$/i, 'TAQUILLA')).filter(Boolean).join(', ');
     const porConfirmar = dateCols.some((d) => /confirmar/i.test(c[d.i] || '')) ? 1 : 0;
     const { lastInsertRowid: id } = insP.run(nombre, (c[1] || '').trim(), equipo, sectoresDe(equipo), (c[aptCol] || '').trim(), porConfirmar);
     for (const d of dateCols) {
@@ -214,6 +217,20 @@ function seedSkills() {
   }
 }
 
+// Turno de taquilla de un espectáculo: de 1 h antes a 30 min después de su inicio, con el nombre "Taquilla <obra>".
+// Se vincula a la compañía del espectáculo. (Se crea una vez por espectáculo; si se borra a mano no reaparece.)
+const hhmm = (m) => `${String(Math.floor(((m % 1440) + 1440) % 1440 / 60)).padStart(2, '0')}:${String((((m % 1440) + 1440) % 1440) % 60).padStart(2, '0')}`;
+export function createTaquilla(show) {
+  const m = +show.time.slice(0, 2) * 60 + +show.time.slice(3);
+  const id = Number(db.prepare('INSERT INTO tasks (date, start, end, area, space, name, needed) VALUES (?,?,?,?,?,?,?)')
+    .run(show.date, hhmm(m - TAQUILLA.before), hhmm(m + TAQUILLA.after), 'taquilla', show.venue, `Taquilla ${show.obra}`, TAQUILLA.needed).lastInsertRowid);
+  db.prepare('INSERT OR IGNORE INTO task_companies (task_id, company_id) VALUES (?,?)').run(id, show.company_id);
+  return id;
+}
+function seedTaquillas() {
+  for (const show of db.prepare('SELECT * FROM shows ORDER BY date, time').all()) if (!SIN_TAQUILLA.includes(show.discipline)) createTaquilla(show);
+}
+
 const norm = (s) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 export function suggestCompanies(taskName) {
   const n = norm(taskName);
@@ -253,4 +270,5 @@ export function seedIfEmpty() {
   applySeed('tecnica-v1', seedTecnica);
   applySeed('companias-v1', seedCompanias);
   applySeed('skills-v1', seedSkills);
+  applySeed('taquilla-v1', seedTaquillas);
 }

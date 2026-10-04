@@ -45,15 +45,17 @@ export function autoAssign({ dates, areas, replace }) {
     // Horas de cada persona en cada grupo (cb = Bar/Cocina/Limpieza, t = Técnica) en todo el festival.
     // Quien está en ambos grupos debería repartir su tiempo mitad y mitad.
     const gh = new Map(people.map((p) => [p.id, { cb: 0, t: 0 }]));
-    for (const r of db.prepare('SELECT a.person_id, t.area, t.start, t.end FROM assignments a JOIN tasks t ON t.id = a.task_id').all()) gh.get(r.person_id)[AREA_GROUP[r.area]] += durMin(r);
+    for (const r of db.prepare('SELECT a.person_id, t.area, t.start, t.end FROM assignments a JOIN tasks t ON t.id = a.task_id').all()) if (AREA_GROUP[r.area]) gh.get(r.person_id)[AREA_GROUP[r.area]] += durMin(r);
     const dual = (p) => p.teams.has('TÉCNICA') && ['CUINA', 'NETEJA', 'BAR'].some((x) => p.teams.has(x));
     // Clase de un candidato para una tarea: 0 = va por detrás en ese grupo (conviene ponerlo), 1 = neutro, 2 = ya va por delante (se evita).
     const balClass = (p, c) => {
       if (!dual(p)) return 1;
-      const g = AREA_GROUP[c.t.area], o = g === 't' ? 'cb' : 't', d = gh.get(p.id)[g] - gh.get(p.id)[o];
+      const g = AREA_GROUP[c.t.area], o = g === 't' ? 'cb' : 't';
+      if (!g) return 1; // las tareas sin grupo (taquilla) no entran en el balance
+      const d = gh.get(p.id)[g] - gh.get(p.id)[o];
       return d < 0 ? 0 : d > 0 ? 2 : 1;
     };
-    const gap = (p, c) => { const g = AREA_GROUP[c.t.area], o = g === 't' ? 'cb' : 't'; return dual(p) ? gh.get(p.id)[g] - gh.get(p.id)[o] : 0; };
+    const gap = (p, c) => { const g = AREA_GROUP[c.t.area], o = g === 't' ? 'cb' : 't'; return g && dual(p) ? gh.get(p.id)[g] - gh.get(p.id)[o] : 0; };
 
     for (const date of dates) {
       const tasks = db.prepare('SELECT * FROM tasks WHERE date = ?').all(date);
@@ -80,7 +82,7 @@ export function autoAssign({ dates, areas, replace }) {
       const give = (p, c) => {
         if (balClass(p, c) === 2) result.imbalanced++;
         insert.run(c.t.id, p.id); c.who.add(p.id); c.missing--; book(p.id, c.t); result.assigned++;
-        gh.get(p.id)[AREA_GROUP[c.t.area]] += c.dur;
+        if (AREA_GROUP[c.t.area]) gh.get(p.id)[AREA_GROUP[c.t.area]] += c.dur;
       };
       const lo = (p) => load.get(p.id) || 0;
 
@@ -118,6 +120,7 @@ export function autoAssign({ dates, areas, replace }) {
         if (c.dur > CAP) reason = `dura más de ${CAP / 60} h`;
         else if (!c.fullPool.length) reason = 'nadie del equipo disponible ese día';
         else if (unc.length && !cand.length) reason = `nadie disponible con la aptitud (${unc.map((s) => skillNames.get(s)).join(', ')})`;
+        else if (!cand.length) reason = 'no hay más personas del equipo disponibles ese día';
         else if (cand.every((p) => (load.get(p.id) || 0) + c.dur > CAP)) reason = `quienes podrían ya llegarían al tope de ${CAP / 60} h`;
         else reason = 'los candidatos están en otra tarea a la misma hora';
         result.unresolved.push({ task_id: c.t.id, date, start: c.t.start, end: c.t.end, area: c.t.area, name: c.t.name, space: c.t.space, missing: c.missing, reason });
@@ -139,7 +142,7 @@ export function workload() {
     const d = days[r.person_id] ||= {};
     d[r.date] = (d[r.date] || 0) + m;
     const g = groups[r.person_id] ||= { cb: 0, t: 0 };
-    g[AREA_GROUP[r.area]] += m;
+    if (AREA_GROUP[r.area]) g[AREA_GROUP[r.area]] += m;
   }
   return { days, groups };
 }

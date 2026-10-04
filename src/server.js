@@ -2,7 +2,7 @@ import express from 'express';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { db, seedIfEmpty, sectoresDe } from './db.js';
-import { DAYS, AREAS, AREA_TEAMS, MAX_DAILY_MINUTES } from './config.js';
+import { DAYS, AREAS, AREA_TEAMS, STRICT_AREAS, MAX_DAILY_MINUTES } from './config.js';
 import { autoAssign, workload, findConflicts, candidatesFor, range, overlap, durMin } from './assigner.js';
 
 seedIfEmpty();
@@ -228,6 +228,8 @@ app.post('/api/tasks/:id/volunteers', (req, res) => {
   if (!db.prepare('SELECT 1 FROM people WHERE id = ?').get(pid)) return bad(res, 'Persona no encontrada', 404);
   const n = db.prepare('SELECT COUNT(*) n FROM assignments WHERE task_id = ?').get(id).n;
   if (n >= task.needed) return bad(res, 'La tarea ya tiene todos los voluntarios necesarios', 409);
+  const strict = strictError(id, pid);
+  if (strict) return bad(res, strict, 409);
   db.prepare('INSERT OR IGNORE INTO assignments (task_id, person_id) VALUES (?,?)').run(id, pid);
   res.status(201).json({ ok: true });
 });
@@ -236,6 +238,15 @@ app.delete('/api/tasks/:id/volunteers/:pid', (req, res) => {
   db.prepare('DELETE FROM assignments WHERE task_id = ? AND person_id = ?').run(+req.params.id, +req.params.pid);
   res.json({ ok: true });
 });
+
+// Áreas estrictas (taquilla): solo personas del equipo correspondiente.
+function strictError(taskId, personId) {
+  const t = db.prepare('SELECT area, name FROM tasks WHERE id = ?').get(taskId);
+  if (!t || !STRICT_AREAS.includes(t.area)) return null;
+  const p = db.prepare('SELECT nombre, equipo FROM people WHERE id = ?').get(personId);
+  const ok = AREA_TEAMS[t.area].some((x) => p.equipo.split(',').map((e) => e.trim()).includes(x));
+  return ok ? null : `"${t.name}" solo admite personas del equipo ${AREA_TEAMS[t.area].join('/')} (${p.nombre} no lo es)`;
+}
 
 // Avisos (no bloqueantes) tras colocar a una persona en una tarea a mano.
 function assignmentWarnings(personId, taskId) {
@@ -259,6 +270,8 @@ app.post('/api/assignments/swap', (req, res) => {
   const has = (t, p) => !!db.prepare('SELECT 1 FROM assignments WHERE task_id = ? AND person_id = ?').get(t, p);
   if (!has(ta, pa) || !has(tb, pb)) return bad(res, 'Esa asignación ya no existe; la tabla se ha recargado', 409);
   if (has(tb, pa) || has(ta, pb)) return bad(res, 'Una de las dos personas ya está en la otra tarea', 409);
+  const strict = strictError(tb, pa) || strictError(ta, pb);
+  if (strict) return bad(res, strict, 409);
   db.exec('BEGIN');
   try {
     db.prepare('DELETE FROM assignments WHERE (task_id = ? AND person_id = ?) OR (task_id = ? AND person_id = ?)').run(ta, pa, tb, pb);

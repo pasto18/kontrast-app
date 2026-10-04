@@ -22,6 +22,7 @@ export const AREAS = {
   cocina: 'Cocina y limpieza',
   bar: 'Bar',
   tecnica: 'Técnica',
+  taquilla: 'Taquilla',
 };
 
 // Tareas fijas de Cocina y limpieza, repetidas cada día.
@@ -34,9 +35,15 @@ export const COCINA_FIJAS = [
 ];
 
 // Un equipo de la hoja de voluntarios puede cubrir una o más áreas de tareas.
-export const AREA_TEAMS = { cocina: ['CUINA', 'NETEJA'], bar: ['BAR'], tecnica: ['TÉCNICA'] };
+export const AREA_TEAMS = { cocina: ['CUINA', 'NETEJA'], bar: ['BAR'], tecnica: ['TÉCNICA'], taquilla: ['TAQUILLA'] };
+// Áreas en las que SOLO puede trabajar gente de su equipo (el servidor rechaza al resto).
+export const STRICT_AREAS = ['taquilla'];
+// Turno de taquilla automático por espectáculo: desde 1 h antes hasta 30 min después del inicio.
+export const TAQUILLA = { before: 60, after: 30, needed: 3 };
+// Disciplinas del programa que no son espectáculos y no llevan taquilla.
+export const SIN_TAQUILLA = ['DINAR', 'XERRADA'];
 // Tope de horas que una persona puede trabajar en un día (lo respeta el asignador automático).
 export const MAX_DAILY_MINUTES = 240;
 
 // Los dos grandes grupos de la hoja de voluntarios: Bar/Neteja/Cuina ("cb") y Técnica ("t").
-export const AREA_GROUP = { cocina: 'cb', bar: 'cb', tecnica: 't' };
+export const AREA_GROUP = { cocina: 'cb', bar: 'cb', tecnica: 't', taquilla: null };
