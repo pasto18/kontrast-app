@@ -625,6 +625,62 @@ async function saveOtherSkill(key) {
   renderAllSkillPickers();
 }
 
+// ---------- Tareas por espectáculo (plantillas) ----------
+let templates = [], tplDisciplines = [], tplDrafts = [];
+async function loadTemplates() { const r = await api('/api/templates'); templates = r.templates; tplDisciplines = r.disciplines; renderTemplates(); }
+
+function templateCard(t, draftIdx) {
+  const key = draftIdx === undefined ? t.id : `new${draftIdx}`;
+  const off = (v) => [Math.abs(v), v < 0 ? -1 : 1];
+  const [sm, sd] = off(t.start_offset), [em, ed] = off(t.end_offset);
+  const dir = (name, d) => `<select name="${name}"><option value="-1" ${d < 0 ? 'selected' : ''}>antes</option><option value="1" ${d > 0 ? 'selected' : ''}>después</option></select>`;
+  return `<div class="tpl" data-tpl="${key}">
+    <div class="tpl-head"><input name="name" value="${esc(t.name)}" maxlength="60" title="Nombre de la plantilla">
+      <span class="hint">${draftIdx === undefined ? `${t.task_count} tareas creadas · se aplica a ${t.show_count} espectáculos` : 'Nueva: se creará al guardar'}</span></div>
+    <div class="grid">
+      <label class="wide">Nombre de cada tarea <input name="task_name" value="${esc(t.task_name)}" maxlength="80"><span class="hint">{obra} = nombre de la obra · {compania} = nombre de la compañía</span></label>
+      <label>Área <select name="area">${Object.entries(cfg.areas).map(([k, l]) => `<option value="${k}" ${k === t.area ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>
+      <label>Voluntarios necesarios <input type="number" name="needed" min="0" max="99" value="${t.needed}"></label>
+      <div class="lab">Empieza <div class="off"><input type="number" name="start_min" min="0" max="1440" value="${sm}"> min ${dir('start_dir', sd)} del inicio del espectáculo</div></div>
+      <div class="lab">Termina <div class="off"><input type="number" name="end_min" min="0" max="1440" value="${em}"> min ${dir('end_dir', ed)} del inicio del espectáculo</div></div>
+      <label class="wide">Espacio <input name="space" value="${esc(t.space)}" maxlength="60" placeholder="(vacío = el espacio del espectáculo)"></label>
+      <div class="wide lab">Aptitudes necesarias<div class="checks">${skills.map((k) => `<label><input type="checkbox" name="skill" value="${k.id}" ${t.skill_ids.includes(k.id) ? 'checked' : ''}> ${esc(k.name)}</label>`).join('') || '<span class="hint">No hay aptitudes</span>'}</div></div>
+      <div class="wide lab">No aplicar a estas disciplinas<div class="checks">${tplDisciplines.map((d) => `<label><input type="checkbox" name="excl" value="${esc(d)}" ${t.exclude.includes(d) ? 'checked' : ''}> ${esc(d)}</label>`).join('')}</div></div>
+    </div>
+    <p class="error" data-tpl-error></p>
+    <div class="actions">${draftIdx === undefined ? `<button type="button" class="danger" data-tpl-del="${t.id}" title="Se conservan las tareas ya creadas, como tareas sueltas">Eliminar plantilla</button>` : `<button type="button" data-tpl-cancel="${draftIdx}">Descartar</button>`}
+      <span style="flex:1"></span><button type="button" class="primary" data-tpl-save="${key}">Guardar y aplicar a todas</button></div>
+  </div>`;
+}
+
+function renderTemplates() {
+  $('#templates-body').innerHTML = [...templates.map((t) => templateCard(t)), ...tplDrafts.map((t, i) => templateCard(t, i))].join('')
+    || '<div class="empty">No hay plantillas. Crea una con "+ Nueva plantilla".</div>';
+}
+
+function readTemplateCard(card) {
+  const q = (n) => card.querySelector(`[name=${n}]`);
+  const all = (n) => [...card.querySelectorAll(`[name=${n}]:checked`)].map((i) => i.value);
+  return { name: q('name').value, task_name: q('task_name').value, area: q('area').value, needed: q('needed').value,
+    start_offset: (+q('start_min').value) * (+q('start_dir').value), end_offset: (+q('end_min').value) * (+q('end_dir').value),
+    space: q('space').value, skill_ids: all('skill').map(Number), exclude: all('excl') };
+}
+
+async function saveTemplateCard(key) {
+  const card = $(`[data-tpl="${key}"]`), err = card.querySelector('[data-tpl-error]');
+  const body = readTemplateCard(card);
+  try {
+    const r = key.startsWith('new') ? await api('/api/templates', 'POST', body) : await api(`/api/templates/${key}`, 'PUT', body);
+    if (key.startsWith('new')) tplDrafts.splice(+key.slice(3), 1);
+    const x = r.result, bits = [`${x.created} creadas`, `${x.updated} actualizadas`];
+    if (x.deleted) bits.push(`${x.deleted} borradas`);
+    if (x.kept) bits.push(`${x.kept} conservadas sin plantilla (tenían voluntarios)`);
+    if (x.trimmed) bits.push(`${x.trimmed} se quedaron con más voluntarios de los pedidos porque ya estaban asignados`);
+    toast(`Plantilla guardada: ${bits.join(', ')}`);
+    await Promise.all([loadTemplates(), refreshCatalog(), loadTasks()]);
+  } catch (e) { err.textContent = e.message; }
+}
+
 // ---------- Diálogo de persona ----------
 const pdlg = $('#person-dialog'), pform = $('#person-form');
 const DEFAULT_TEAMS = ['CUINA', 'NETEJA', 'BAR', 'TÉCNICA', 'VIDEO', 'TAQUILLA'];
@@ -743,6 +799,9 @@ document.addEventListener('click', (e) => {
   else if (d.company) run(openDetail('company', d.company));
   else if (d.space) run(openDetail('space', d.space));
   else if (d.coRm) { dlgCompanies = dlgCompanies.filter((id) => id !== +d.coRm); renderDlgCompanies(); }
+  else if (d.tplSave) run(saveTemplateCard(d.tplSave));
+  else if (d.tplDel) { const t = templates.find((x) => x.id === +d.tplDel); if (confirm(`¿Eliminar la plantilla "${t.name}"? Sus ${t.task_count} tareas se conservan como tareas sueltas.`)) run(api(`/api/templates/${t.id}`, 'DELETE').then(() => Promise.all([loadTemplates(), loadTasks()]))); }
+  else if (d.tplCancel) { tplDrafts.splice(+d.tplCancel, 1); renderTemplates(); }
   else if (d.ptasks) run(openPersonTasks(+d.ptasks));
   else if (d.pskRm) { const [pid, sid] = d.pskRm.split(':').map(Number); const p = people.find((x) => x.id === pid); run(savePerson(p, { skill_ids: p.skill_ids.filter((k) => k !== sid) })); }
   else if (d.pskSave) run(savePersonSkillOther(+d.pskSave));
@@ -859,6 +918,12 @@ $('#assign-run').onclick = async () => {
 };
 $('#time-toggle').onclick = () => { showTime = !showTime; store.set('showTime', showTime); $('#time-toggle').classList.toggle('active', showTime); renderTasks(); };
 $('#task-search').oninput = () => renderTasks();
+$('#open-templates').onclick = () => run(loadTemplates().then(() => $('#templates-dialog').showModal()));
+$('#templates-close').onclick = () => $('#templates-dialog').close();
+$('#template-add').onclick = () => {
+  tplDrafts.push({ name: 'Montaje', task_name: 'Montaje {obra}', area: 'tecnica', start_offset: -180, end_offset: -60, needed: 2, space: '', skill_ids: [], exclude: ['DINAR', 'XERRADA'] });
+  renderTemplates(); $('#templates-body').lastElementChild?.scrollIntoView({ block: 'center' });
+};
 $('#add-person').onclick = () => openPerson(null);
 $('#add-task').onclick = () => openTask(null);
 $('#people-search').oninput = renderPeople;

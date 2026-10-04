@@ -46,6 +46,7 @@
       <button id="others-toggle" title="En la lista de voluntarios de cada tarea, incluir gente que se apuntó a otros equipos">Mostrar también otros equipos</button>
       <button id="auto-assign" title="Asignar voluntarios automáticamente">✨ Asignar automáticamente</button>
       <button id="view-conflicts" title="Se activa cuando hay tareas sin cubrir tras asignar, o asignaciones con problemas" disabled>Ver conflictos <span id="conflicts-badge" class="cbadge" hidden></span></button>
+      <button id="open-templates" title="Editar la taquilla estándar y otras tareas recurrentes que dependen de cada espectáculo">⚙ Tareas por espectáculo</button>
       <button id="time-toggle" title="Resalta en la lista de voluntarios a quien está en un turno que no es de su horario (madrugadorx / trasnochadorx)">Resaltar choques de horario</button>
       <button id="add-task" class="primary">+ Nueva tarea</button>
     </div>
@@ -155,6 +156,11 @@
 <dialog id="conflicts-dialog">
   <div class="detail-head"><div><h2>Conflictos</h2><div id="conflicts-sub" class="sub"></div></div><button id="conflicts-close" title="Cerrar">✕</button></div>
   <div id="conflicts-body"></div>
+</dialog>
+<dialog id="templates-dialog">
+  <div class="detail-head"><div><h2>Tareas por espectáculo</h2><div class="sub">Cada plantilla crea una tarea por espectáculo, con horas relativas al inicio de la función. Al guardar se actualizan todas a la vez (también las que hayas cambiado a mano); los voluntarios asignados se conservan.</div></div><button id="templates-close" title="Cerrar">✕</button></div>
+  <div id="templates-body"></div>
+  <div class="actions" style="justify-content:flex-start"><button id="template-add">+ Nueva plantilla</button></div>
 </dialog>
 <datalist id="people-names"></datalist>
 <datalist id="space-names"></datalist>

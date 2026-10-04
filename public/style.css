@@ -212,3 +212,12 @@ tr.focus{outline:3px solid transparent;outline-offset:-3px;animation:focusBorder
 tr.focus td{animation:focusBg 1.2s ease-in-out 6}
 @keyframes focusBorder{0%,100%{outline-color:transparent}50%{outline-color:#7048e8}}
 @keyframes focusBg{0%,100%{background:transparent}50%{background:color-mix(in srgb,#7048e8 20%,transparent)}}
+
+#templates-dialog{width:min(860px,96vw);max-height:92vh;overflow:auto}
+.tpl{border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin:10px 0;background:var(--bg)}
+.tpl-head{display:flex;gap:10px;align-items:center;margin-bottom:8px}
+.tpl-head input{font-weight:700;font-size:15px;flex:1}
+.tpl .off{display:flex;gap:6px;align-items:center;color:var(--ink);font-size:14px;flex-wrap:wrap}
+.tpl .off input{width:76px}
+.tpl .checks{gap:2px 12px}.tpl .checks label{font-size:12px}
+.tpl .actions{margin-top:10px}

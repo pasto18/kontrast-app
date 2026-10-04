@@ -3,6 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { db, seedIfEmpty, sectoresDe } from './db.js';
 import { DAYS, AREAS, AREA_TEAMS, STRICT_AREAS, HORARIOS, MAX_DAILY_MINUTES, capOf } from './config.js';
+import { listTemplates, disciplines, applyTemplate } from './templates.js';
 import { autoAssign, workload, findConflicts, candidatesFor, range, overlap, durMin } from './assigner.js';
 
 seedIfEmpty();
@@ -313,6 +314,54 @@ app.get('/api/tasks/:id/candidates', (req, res) => {
   const r = candidatesFor(+req.params.id);
   if (!r) return bad(res, 'Tarea no encontrada', 404);
   res.json(r);
+});
+
+// ---- Plantillas de tareas por espectáculo ----
+function readTemplate(body) {
+  const t = {
+    name: String(body.name ?? '').trim(), task_name: String(body.task_name ?? '').trim(), area: body.area,
+    start_offset: Number(body.start_offset), end_offset: Number(body.end_offset), needed: Number(body.needed),
+    space: String(body.space ?? '').trim(),
+    exclude: (Array.isArray(body.exclude) ? body.exclude : []).map((x) => String(x).trim()).filter(Boolean),
+  };
+  if (!t.name) return { error: 'La plantilla necesita un nombre' };
+  if (!t.task_name) return { error: 'Indica cómo se llamarán las tareas (por ejemplo "Montaje {obra}")' };
+  if (!AREAS[t.area]) return { error: 'Área inválida' };
+  if (![t.start_offset, t.end_offset].every((n) => Number.isInteger(n) && Math.abs(n) <= 1440)) return { error: 'Los minutos deben ser números enteros' };
+  if (t.end_offset <= t.start_offset) return { error: 'La tarea debe terminar después de empezar' };
+  if (t.end_offset - t.start_offset >= 1440) return { error: 'La tarea no puede durar un día entero' };
+  if (!Number.isInteger(t.needed) || t.needed < 0 || t.needed > 99) return { error: 'Voluntarios necesarios: entero entre 0 y 99' };
+  const ids = skillIds(body);
+  if (!allSkillsExist(ids)) return { error: 'Aptitud no encontrada' };
+  return { t, ids };
+}
+function saveTemplate(id, t, ids) {
+  const vals = [t.name, t.task_name, t.area, t.start_offset, t.end_offset, t.needed, t.space, t.exclude.join('|')];
+  if (id) db.prepare('UPDATE task_templates SET name=?, task_name=?, area=?, start_offset=?, end_offset=?, needed=?, space=?, exclude_disciplines=? WHERE id=?').run(...vals, id);
+  else id = Number(db.prepare('INSERT INTO task_templates (name, task_name, area, start_offset, end_offset, needed, space, exclude_disciplines) VALUES (?,?,?,?,?,?,?,?)').run(...vals).lastInsertRowid);
+  db.prepare('DELETE FROM template_skills WHERE template_id = ?').run(id);
+  for (const s of ids) db.prepare('INSERT INTO template_skills (template_id, skill_id) VALUES (?,?)').run(id, s);
+  return id;
+}
+app.get('/api/templates', (_req, res) => res.json({ templates: listTemplates(), disciplines: disciplines() }));
+app.post('/api/templates', (req, res) => {
+  const { t, ids, error } = readTemplate(req.body);
+  if (error) return bad(res, error);
+  const id = saveTemplate(null, t, ids);
+  res.status(201).json({ id, result: applyTemplate(id) });
+});
+app.put('/api/templates/:id', (req, res) => {
+  const id = +req.params.id;
+  if (!db.prepare('SELECT 1 FROM task_templates WHERE id = ?').get(id)) return bad(res, 'Plantilla no encontrada', 404);
+  const { t, ids, error } = readTemplate(req.body);
+  if (error) return bad(res, error);
+  saveTemplate(id, t, ids);
+  res.json({ id, result: applyTemplate(id) });
+});
+// Eliminar una plantilla conserva sus tareas actuales como tareas sueltas.
+app.delete('/api/templates/:id', (req, res) => {
+  db.prepare('DELETE FROM task_templates WHERE id = ?').run(+req.params.id);
+  res.json({ ok: true });
 });
 
 app.get('/api/workload', (_req, res) => res.json(workload()));

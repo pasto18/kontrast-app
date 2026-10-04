@@ -83,12 +83,33 @@ CREATE TABLE IF NOT EXISTS accepted_overtime (
   minutes INTEGER NOT NULL,   -- total del día aceptado a propósito (pasa del tope)
   PRIMARY KEY (person_id, date)
 );
+CREATE TABLE IF NOT EXISTS task_templates (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL,                 -- nombre de la plantilla ("Taquilla", "Montaje"…)
+  task_name TEXT NOT NULL,            -- patrón del nombre de cada tarea: "Taquilla {obra}"
+  area TEXT NOT NULL,
+  start_offset INTEGER NOT NULL,      -- minutos respecto al inicio del espectáculo (negativo = antes)
+  end_offset INTEGER NOT NULL,
+  needed INTEGER NOT NULL DEFAULT 1,
+  space TEXT NOT NULL DEFAULT '',     -- vacío = sede del espectáculo
+  exclude_disciplines TEXT NOT NULL DEFAULT ''  -- disciplinas del programa a las que no se aplica, separadas por |
+);
+CREATE TABLE IF NOT EXISTS template_skills (
+  template_id INTEGER NOT NULL REFERENCES task_templates(id) ON DELETE CASCADE,
+  skill_id INTEGER NOT NULL REFERENCES skills(id) ON DELETE CASCADE,
+  PRIMARY KEY (template_id, skill_id)
+);
 CREATE TABLE IF NOT EXISTS assignments (
   task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
   person_id INTEGER NOT NULL REFERENCES people(id) ON DELETE CASCADE,
   PRIMARY KEY (task_id, person_id)
 );
 `);
+
+// Tareas generadas por una plantilla: guardan de qué plantilla y de qué espectáculo salen.
+for (const col of ['template_id INTEGER REFERENCES task_templates(id) ON DELETE SET NULL', 'show_id INTEGER REFERENCES shows(id) ON DELETE SET NULL']) {
+  if (!db.prepare("SELECT 1 FROM pragma_table_info('tasks') WHERE name = ?").get(col.split(' ')[0])) db.exec(`ALTER TABLE tasks ADD COLUMN ${col}`);
+}
 
 // La "disponibilidad" 50/100 de la hoja ya no se usa: solo importa el balance entre grupos.
 if (db.prepare("SELECT 1 FROM pragma_table_info('people') WHERE name = 'dispo'").get()) db.exec('ALTER TABLE people DROP COLUMN dispo');
@@ -251,6 +272,18 @@ function seedHorarios() {
   ids.forEach((id, i) => up.run(i < nT ? 'trasnochador' : i < nT + nM ? 'madrugador' : 'indiferente', id));
 }
 
+// La taquilla pasa a ser la primera plantilla de tareas por espectáculo: se enlazan las tareas ya creadas con su espectáculo.
+function seedPlantillaTaquilla() {
+  const id = Number(db.prepare('INSERT INTO task_templates (name, task_name, area, start_offset, end_offset, needed, space, exclude_disciplines) VALUES (?,?,?,?,?,?,?,?)')
+    .run('Taquilla', 'Taquilla {obra}', 'taquilla', -TAQUILLA.before, TAQUILLA.after, TAQUILLA.needed, '', SIN_TAQUILLA.join('|')).lastInsertRowid);
+  const link = db.prepare("UPDATE tasks SET template_id = ?, show_id = ? WHERE area = 'taquilla' AND template_id IS NULL AND date = ? AND name = ? AND start = ?");
+  for (const s of db.prepare('SELECT * FROM shows').all()) {
+    if (SIN_TAQUILLA.includes(s.discipline)) continue;
+    const m = +s.time.slice(0, 2) * 60 + +s.time.slice(3);
+    link.run(id, s.id, s.date, `Taquilla ${s.obra}`, hhmm(m - TAQUILLA.before));
+  }
+}
+
 const norm = (s) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 export function suggestCompanies(taskName) {
   const n = norm(taskName);
@@ -292,4 +325,5 @@ export function seedIfEmpty() {
   applySeed('skills-v1', seedSkills);
   applySeed('taquilla-v1', seedTaquillas);
   applySeed('horarios-azar-v1', seedHorarios);
+  applySeed('plantilla-taquilla-v1', seedPlantillaTaquilla);
 }
