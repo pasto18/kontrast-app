@@ -17,6 +17,7 @@ let selDay = null, view = store.get('view', 'voluntarios');
 let areas = new Set(store.get('areas', ['cocina', 'bar', 'tecnica']));
 let peopleTeams = new Set(store.get('peopleTeams', []));
 let editingId = null;
+let showOtherTeams = store.get('showOtherTeams', false);
 
 // ---------- Reloj simulado (hora "naive": se trata todo como UTC) ----------
 const CLOCK_START = '2025-04-06T08:00';
@@ -84,23 +85,29 @@ function pickerOptions(t) {
     const teams = teamsOf(p).join('/');
     return `<option value="${p.id}">${esc(p.nombre)}${teams ? ` · ${esc(teams)}` : ''}${b ? ` ⚠ solapa con ${esc(b.name)}` : ''}</option>`;
   };
-  const cand = people.filter((p) => !assigned.has(p.id));
-  const present = cand.filter((p) => p.av[t.date] === 1);
-  const groups = [
-    ['Disponibles · equipo coincide', present.filter((p) => fitsArea(p, t.area))],
-    ['Disponibles · otros equipos', present.filter((p) => !fitsArea(p, t.area))],
-    ['Por confirmar / sin datos', cand.filter((p) => p.av[t.date] == null)],
-    ['No disponibles ese día', cand.filter((p) => p.av[t.date] === 0)],
-  ];
+  const present = people.filter((p) => !assigned.has(p.id) && p.av[t.date] === 1);
+  const groups = [['Equipo coincide', present.filter((p) => fitsArea(p, t.area))]];
+  if (showOtherTeams) groups.push(['Otros equipos', present.filter((p) => !fitsArea(p, t.area))]);
   return '<option value="">+ Añadir…</option>' + groups.filter(([, l]) => l.length)
     .map(([label, l]) => `<optgroup label="${label}">${l.map(opt).join('')}</optgroup>`).join('');
+}
+
+// Un hueco por voluntario necesario: el tamaño de la fila no cambia al asignar.
+function slots(t) {
+  const out = t.volunteers.map((v) => `<div class="slot"><span class="vol">${esc(v.nombre)}</span><button data-rm="${t.id}:${v.id}" title="Quitar">×</button></div>`);
+  for (let i = t.volunteers.length; i < t.needed; i++) {
+    out.push(i === t.volunteers.length
+      ? `<div class="slot"><select data-add="${t.id}">${pickerOptions(t)}</select></div>`
+      : '<div class="slot free">libre</div>');
+  }
+  return out.join('');
 }
 
 function renderTasks() {
   const rows = tasks.filter((t) => areas.has(t.area));
   const head = `<thead><tr><th>Inicio</th><th>Fin</th><th class="num">Dur.</th><th>Área</th><th>Espacio</th><th>Tarea</th>
-    <th class="num">Necesarios</th><th>Responsable</th><th>Voluntarios</th><th></th></tr></thead>`;
-  if (!rows.length) { $('#tasks-table').innerHTML = head + `<tbody><tr><td colspan="10" class="empty">No hay tareas para este día con los filtros actuales.</td></tr></tbody>`; return; }
+    <th class="num nec" title="Voluntarios necesarios">Nec.</th><th>Responsable</th><th class="est"></th><th>Voluntarios</th><th></th></tr></thead>`;
+  if (!rows.length) { $('#tasks-table').innerHTML = head + `<tbody><tr><td colspan="11" class="empty">No hay tareas para este día con los filtros actuales.</td></tr></tbody>`; return; }
   $('#tasks-table').innerHTML = head + '<tbody>' + rows.map((t) => {
     const st = taskStatus(t), n = t.volunteers.length;
     const cls = n === 0 ? 'f0' : n < t.needed ? 'f1' : 'f2';
@@ -109,13 +116,17 @@ function renderTasks() {
       <td class="num">${fmtDur(t.start, t.end)}</td>
       <td><span class="tag ${t.area}">${esc(cfg.areas[t.area])}</span></td>
       <td>${esc(t.space)}</td><td><b>${esc(t.name)}</b></td>
-      <td class="num">${t.needed}</td><td>${esc(t.responsible)}</td>
-      <td class="wrap"><div class="vols"><span class="fill ${cls}">${n}/${t.needed}</span>
-        ${t.volunteers.map((v) => `<span class="vol">${esc(v.nombre)}<button data-rm="${t.id}:${v.id}" title="Quitar">×</button></span>`).join('')}
-        ${n < t.needed ? `<select data-add="${t.id}">${pickerOptions(t)}</select>` : ''}</div></td>
+      <td class="num nec">${t.needed}</td><td>${esc(t.responsible)}</td>
+      <td class="est"><span class="fill ${cls}">${n}/${t.needed}</span></td>
+      <td><div class="slots">${slots(t)}</div></td>
       <td><button class="icon" data-edit="${t.id}" title="Editar">✎</button>
           <button class="icon" data-del="${t.id}" title="Eliminar">🗑</button></td></tr>`;
   }).join('') + '</tbody>';
+}
+
+function renderOthersToggle() {
+  $('#others-toggle').classList.toggle('active', showOtherTeams);
+  $('#others-toggle').textContent = showOtherTeams ? '✓ Mostrando otros equipos' : 'Mostrar también otros equipos';
 }
 
 function renderAreaFilter() {
@@ -196,6 +207,7 @@ document.addEventListener('change', (e) => {
   const s = e.target;
   if (s.dataset.add && s.value) run(api(`/api/tasks/${s.dataset.add}/volunteers`, 'POST', { person_id: +s.value })).finally(loadTasks);
 });
+$('#others-toggle').onclick = () => { showOtherTeams = !showOtherTeams; store.set('showOtherTeams', showOtherTeams); renderOthersToggle(); renderTasks(); };
 $('#add-task').onclick = () => openTask(null);
 $('#people-search').oninput = renderPeople;
 $('#clock-play').onclick = () => setPlaying(!playing);
@@ -210,7 +222,7 @@ $('#clock-input').onchange = (e) => { const ms = Date.parse(e.target.value + ':0
   fill(form.elements.date, cfg.days.map((d) => [d.date, d.label]));
   $('#people-names').innerHTML = people.map((p) => `<option value="${esc(p.nombre)}">`).join('');
   $('#clock-input').value = clockStr();
-  renderAreaFilter(); renderPeopleFilter();
+  renderAreaFilter(); renderPeopleFilter(); renderOthersToggle();
   const saved = store.get('day', null);
   const start = cfg.days.some((d) => d.date === clockDate()) ? clockDate() : saved && cfg.days.some((d) => d.date === saved) ? saved : cfg.days[0].date;
   await selectDay(start);

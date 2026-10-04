@@ -4,7 +4,7 @@ Primer módulo: **voluntarios** (tabla de tareas por día + listado de personas 
 
 ```bash
 npm install
-npm start          # http://localhost:3000
+npm start          # http://localhost:3300
 npm run reset-db   # borra la BD; se recrea desde data/seed/ al arrancar
 ```
 

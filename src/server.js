@@ -95,5 +95,5 @@ app.delete('/api/tasks/:id/volunteers/:pid', (req, res) => {
 
 app.use((err, _req, res, _next) => { console.error(err); bad(res, 'Error interno', 500); });
 
-const port = process.env.PORT || 3000;
+const port = process.env.PORT || 3300;
 app.listen(port, () => console.log(`Kontrast app en http://localhost:${port}`));

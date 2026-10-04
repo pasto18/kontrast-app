@@ -16,6 +16,7 @@ input,select{background:var(--card);border:1px solid var(--line);border-radius:6
 main{padding:16px;max-width:1500px;margin:0 auto}
 .toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:10px}
 .toolbar .primary{margin-left:auto}
+#others-toggle.active{background:var(--ink);color:var(--bg);border-color:var(--ink)}
 .days,.chips{display:flex;flex-wrap:wrap;gap:6px}
 .days button{display:flex;flex-direction:column;align-items:center;min-width:62px;line-height:1.2;padding:5px 8px}
 .days button small{color:var(--mute);font-size:11px;text-transform:capitalize}
@@ -39,10 +40,14 @@ tr.past{opacity:.5}tr.now{background:color-mix(in srgb,var(--accent) 12%,transpa
 .fill.f0{background:color-mix(in srgb,var(--bad) 20%,transparent);color:var(--bad)}
 .fill.f1{background:color-mix(in srgb,var(--warn) 25%,transparent);color:#a06a00}
 .fill.f2{background:color-mix(in srgb,var(--ok) 22%,transparent);color:var(--ok)}
-.vols{display:flex;flex-wrap:wrap;gap:4px;align-items:center;max-width:460px}
-.vol{display:inline-flex;align-items:center;gap:4px;background:var(--bg);border:1px solid var(--line);border-radius:99px;padding:1px 4px 1px 9px}
-.vol button{border:0;background:none;padding:0 4px;color:var(--mute)}.vol button:hover{color:var(--bad)}
-.vols select{max-width:190px;border-style:dashed}
+.nec{width:1%;padding-left:4px;padding-right:4px}
+.est{width:1%}
+.slots{display:flex;flex-direction:column;gap:4px;width:250px}
+.slot{display:flex;align-items:center;justify-content:space-between;height:28px;padding:0 4px 0 10px;border:1px solid var(--line);border-radius:99px;background:var(--bg)}
+.slot .vol{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.slot button{border:0;background:none;padding:0 6px;color:var(--mute)}.slot button:hover{color:var(--bad)}
+.slot select{width:100%;height:100%;margin:0 -4px 0 -10px;padding:0 8px;border:1px dashed var(--mute);border-radius:99px;background:transparent}
+.slot.free{border-style:dashed;background:none;color:var(--mute);font-size:12px;opacity:.6}
 .icon{padding:2px 7px}
 .sq{display:inline-block;width:16px;height:16px;border-radius:3px;vertical-align:middle}
 .sq.on{background:var(--ok)}.sq.off{background:var(--off)}
