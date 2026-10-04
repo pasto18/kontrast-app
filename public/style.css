@@ -221,3 +221,7 @@ tr.focus td{animation:focusBg 1.2s ease-in-out 6}
 .tpl .off input{width:76px}
 .tpl .checks{gap:2px 12px}.tpl .checks label{font-size:12px}
 .tpl .actions{margin-top:10px}
+
+/* Personas: la tabla se desplaza dentro de su marco y la cabecera (días incluidos) se queda fija */
+#view-personas .table-wrap{max-height:calc(100vh - 150px)}
+#people-table thead th{position:sticky;top:0;z-index:3;background:var(--card);box-shadow:0 1px 0 var(--line)}
