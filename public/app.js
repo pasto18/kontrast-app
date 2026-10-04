@@ -34,6 +34,7 @@ function setClock(ms, { follow = true } = {}) {
   clockMs = ms;
   store.set('clock', clockStr());
   $('#clock-input').value = clockStr();
+  $('#clock-toggle').title = `Reloj simulado: ${clockStr().replace('T', ' ')}`;
   if (follow && cfg && clockDate() !== prevDate && cfg.days.some((d) => d.date === clockDate())) selectDay(clockDate());
   else if (view === 'voluntarios' && tasks.length) renderTasks();
   renderDays();
@@ -303,6 +304,9 @@ $('#companies-search').oninput = renderCompanies;
 $('#spaces-search').oninput = renderSpaces;
 $('#add-task').onclick = () => openTask(null);
 $('#people-search').oninput = renderPeople;
+$('#clock-toggle').onclick = (e) => { e.stopPropagation(); const p = $('#clock-panel'); p.hidden = !p.hidden; $('#clock-toggle').setAttribute('aria-expanded', !p.hidden); };
+document.addEventListener('click', (e) => { if (!e.target.closest('.clock')) $('#clock-panel').hidden = true; });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') $('#clock-panel').hidden = true; });
 $('#clock-play').onclick = () => setPlaying(!playing);
 $('#clock-reset').onclick = () => { setPlaying(false); setClock(Date.parse(CLOCK_START + ':00Z')); };
 $('#clock-input').onchange = (e) => { const ms = Date.parse(e.target.value + ':00Z'); if (!isNaN(ms)) setClock(ms); };
@@ -316,6 +320,7 @@ $('#clock-input').onchange = (e) => { const ms = Date.parse(e.target.value + ':0
   fill(form.elements.date, cfg.days.map((d) => [d.date, d.label]));
   $('#people-names').innerHTML = people.map((p) => `<option value="${esc(p.nombre)}">`).join('');
   $('#clock-input').value = clockStr();
+  $('#clock-toggle').title = `Reloj simulado: ${clockStr().replace('T', ' ')}`;
   renderAreaFilter(); renderPeopleFilter(); renderOthersToggle();
   const saved = store.get('day', null);
   const start = cfg.days.some((d) => d.date === clockDate()) ? clockDate() : saved && cfg.days.some((d) => d.date === saved) ? saved : cfg.days[0].date;

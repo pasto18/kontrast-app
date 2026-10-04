@@ -15,7 +15,9 @@
     <button data-view="companias">Compañías</button>
     <button data-view="espacios">Espacios</button>
   </nav>
-  <div class="clock" title="Reloj simulado para probar distintos momentos del festival">
+  <div class="clock">
+  <button id="clock-toggle" class="clock-icon" title="Reloj simulado" aria-expanded="false">🕒</button>
+  <div id="clock-panel" class="clock-panel" hidden>
     <span class="clock-label">🕒 Reloj simulado</span>
     <input type="datetime-local" id="clock-input">
     <button data-clock="-1440" title="−1 día">−1d</button>
@@ -29,7 +31,8 @@
       <option value="3600">1 h/s</option>
     </select>
     <button id="clock-reset" title="Volver al inicio del festival">⟲</button>
-  </div>
+    </div>
+</div>
 </header>
 
 <main>
