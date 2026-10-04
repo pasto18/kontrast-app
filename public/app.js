@@ -783,11 +783,11 @@ async function openCandidates(taskId) {
     ? `<p class="cand-note">Personas disponibles ese día, del equipo ${t.uncovered.length ? `y con la aptitud que falta (${esc(t.uncovered.join(', '))}) ` : ''}que aún no están en esta tarea.${t.skills.length && !t.uncovered.length ? ' La aptitud pedida ya la aporta alguien de la tarea.' : ''}</p>
       <div class="table-wrap"><table><thead><tr><th>Persona</th><th>Estado</th><th>Qué hace ese día</th><th class="num">Horas</th><th></th></tr></thead><tbody>${r.candidates.map((c) => `<tr>
         <td><b>${esc(c.nombre)}</b>${c.horario_mismatch ? ' <span class="cst-hz" title="No es el momento del día apropiado para esta persona">⏰ horario</span>' : ''}<div>${c.teams.map((x) => `<span class="eq">${esc(x)}</span>`).join('')}${c.skills.map((x) => `<span class="apt">${esc(x)}</span>`).join('')}</div></td>
-        <td><span class="cst ${c.status}">${{ libre: 'Libre', solape: 'Ocupada/o a esa hora', tope: `Pasaría de ${h(r.cap)} h` }[c.status]}</span>${c.status === 'solape' && c.over ? `<div class="hint">y además pasaría de ${h(r.cap)} h</div>` : ''}</td>
+        <td><span class="cst ${c.status}">${{ libre: 'Libre', solape: 'Ocupada/o a esa hora', tope: `Pasaría de ${h(c.cap)} h` }[c.status]}</span>${c.status === 'solape' && c.over ? `<div class="hint">y además pasaría de ${h(c.cap)} h</div>` : ''}</td>
         <td>${c.blockers.length ? c.blockers.map(busy).join('') : c.tasks.length ? c.tasks.map(busy).join('') : '<span class="hint">Sin tareas ese día</span>'}</td>
         <td class="num">${h(c.minutes)} h → ${h(c.minutes + t.duration)} h</td>
         <td style="white-space:nowrap">${!t.missing ? '' : c.status === 'libre' ? `<button data-cand-assign="${t.id}:${c.id}">Asignar</button>`
-          : c.status === 'tope' ? `<button class="danger" data-cand-assign="${t.id}:${c.id}:1" title="Asignar igualmente: ${esc(c.nombre)} pasará de ${h(r.cap)} h (${h(c.minutes + t.duration)} h ese día)">Resolver</button>` : ''}</td></tr>`).join('')}</tbody></table></div>`
+          : c.status === 'tope' ? `<button class="danger" data-cand-assign="${t.id}:${c.id}:1" title="Asignar igualmente: ${esc(c.nombre)} pasará de ${h(c.cap)} h (${h(c.minutes + t.duration)} h ese día)">Resolver</button>` : ''}</td></tr>`).join('')}</tbody></table></div>`
     : '<div class="empty">No hay nadie que cumpla las condiciones (disponible ese día, del equipo del área y con la aptitud pedida).</div>');
   $('#detail-dialog').showModal();
 }

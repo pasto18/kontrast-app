@@ -2,7 +2,7 @@ import express from 'express';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { db, seedIfEmpty, sectoresDe } from './db.js';
-import { DAYS, AREAS, AREA_TEAMS, STRICT_AREAS, HORARIOS, MAX_DAILY_MINUTES } from './config.js';
+import { DAYS, AREAS, AREA_TEAMS, STRICT_AREAS, HORARIOS, MAX_DAILY_MINUTES, capOf } from './config.js';
 import { autoAssign, workload, findConflicts, candidatesFor, range, overlap, durMin } from './assigner.js';
 
 seedIfEmpty();
@@ -243,7 +243,8 @@ app.post('/api/tasks/:id/volunteers', (req, res) => {
     const t = db.prepare('SELECT date FROM tasks WHERE id = ?').get(id);
     const mins = db.prepare('SELECT t.start, t.end FROM assignments a JOIN tasks t ON t.id = a.task_id WHERE a.person_id = ? AND t.date = ?').all(pid, t.date)
       .reduce((n, r) => n + durMin(r), 0);
-    if (mins > MAX_DAILY_MINUTES) db.prepare('INSERT OR REPLACE INTO accepted_overtime (person_id, date, minutes) VALUES (?,?,?)').run(pid, t.date, mins);
+    const cap = capOf((db.prepare('SELECT equipo FROM people WHERE id = ?').get(pid)?.equipo ?? '').split(',').map((e) => e.trim()));
+    if (mins > cap) db.prepare('INSERT OR REPLACE INTO accepted_overtime (person_id, date, minutes) VALUES (?,?,?)').run(pid, t.date, mins);
   }
   res.status(201).json({ ok: true });
 });
@@ -273,7 +274,8 @@ function assignmentWarnings(personId, taskId) {
   const mine = db.prepare('SELECT t.* FROM assignments a JOIN tasks t ON t.id = a.task_id WHERE a.person_id = ? AND t.date = ?').all(personId, t.date);
   for (const o of mine) if (o.id !== t.id && overlap(range(o), range(t))) out.push(`${p.nombre} se solapa con "${o.name}" (${o.start}–${o.end})`);
   const mins = mine.reduce((n, o) => n + durMin(o), 0);
-  if (mins > MAX_DAILY_MINUTES) out.push(`${p.nombre} pasa a trabajar ${(mins / 60).toString().replace('.', ',')} h ese día (tope ${MAX_DAILY_MINUTES / 60} h)`);
+  const cap = capOf(p.equipo.split(',').map((e) => e.trim()));
+  if (mins > cap) out.push(`${p.nombre} pasa a trabajar ${(mins / 60).toString().replace('.', ',')} h ese día (tope ${cap / 60} h)`);
   return out;
 }
 

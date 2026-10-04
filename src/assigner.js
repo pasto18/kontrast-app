@@ -4,7 +4,7 @@
 // Siempre: la persona está ese día, es del equipo del área, no se solapa con otra tarea suya
 // y no supera MAX_DAILY_MINUTES de trabajo ese día. Lo que no se pueda cubrir se deja vacío.
 import { db } from './db.js';
-import { AREA_TEAMS, AREAS, AREA_GROUP, STRICT_AREAS, MAX_DAILY_MINUTES as CAP, horarioMismatch } from './config.js';
+import { AREA_TEAMS, AREAS, AREA_GROUP, STRICT_AREAS, MAX_DAILY_MINUTES as CAP, capOf, horarioMismatch } from './config.js';
 
 const NIGHT = 360; // los turnos que empiezan antes de las 06:00 son madrugada del día siguiente
 const toMin = (h) => +h.slice(0, 2) * 60 + +h.slice(3);
@@ -202,10 +202,11 @@ export function findConflicts() {
     const mins = list.reduce((n, t) => n + durMin(t), 0);
     // Un exceso aceptado a propósito (botón Resolver) deja de ser conflicto mientras no aumente.
     const ok = db.prepare('SELECT minutes FROM accepted_overtime WHERE person_id = ? AND date = ?').get(p.id, list[0].date);
-    if (mins > CAP && !(ok && mins <= ok.minutes)) {
+    const cap = capOf(p.teams);
+    if (mins > cap && !(ok && mins <= ok.minutes)) {
       const first = [...list].sort(order)[0];
       out.push({ kind: 'horas', person_id: p.id, nombre: p.nombre, date: first.date, task_id: null, task_name: '', start: first.start, end: '', area: first.area, space: '',
-        message: `trabaja ${fmtH(mins)} h ese día (tope ${CAP / 60} h): ${[...list].sort(order).map((t) => `${t.name} ${t.start}–${t.end}`).join(' · ')}` });
+        message: `trabaja ${fmtH(mins)} h ese día (tope ${cap / 60} h): ${[...list].sort(order).map((t) => `${t.name} ${t.start}–${t.end}`).join(' · ')}` });
     }
   }
   return out.sort(order);
@@ -233,8 +234,8 @@ export function candidatesFor(taskId) {
       const tasks = (mine.get(p.id) || []).sort(order);
       const minutes = tasks.reduce((n, o) => n + durMin(o), 0);
       const blockers = tasks.filter((o) => overlap(range(o), mineRange)).map(brief);
-      const over = minutes + dur > CAP;
-      return { id: p.id, nombre: p.nombre, teams: [...p.teams], skills: [...p.skills].filter((s) => uncoveredIds.includes(s) || skillIds.includes(s)).map((s) => skillNames.get(s)),
+      const cap = capOf(p.teams), over = minutes + dur > cap;
+      return { id: p.id, nombre: p.nombre, cap, teams: [...p.teams], skills: [...p.skills].filter((s) => uncoveredIds.includes(s) || skillIds.includes(s)).map((s) => skillNames.get(s)),
         minutes, tasks: tasks.map(brief), blockers, over, horario_mismatch: horarioMismatch(p.horario, t.start), status: blockers.length ? 'solape' : over ? 'tope' : 'libre' };
     })
     .sort((a, b) => ['libre', 'tope', 'solape'].indexOf(a.status) - ['libre', 'tope', 'solape'].indexOf(b.status) || a.horario_mismatch - b.horario_mismatch || a.minutes - b.minutes || a.nombre.localeCompare(b.nombre));
