@@ -21,6 +21,7 @@ let editingId = null;
 let companies = [], spaces = [], dlgCompanies = [], skills = [];
 const pickers = { task: { ids: [], other: false }, person: { ids: [], other: false } };
 let editingPerson = null, pAv = {};
+let showTime = store.get('showTime', false);
 let workload = {}, groupHours = {}, loadMode = store.get('loadMode', false);
 let peopleSort = store.get('peopleSort', 'none'); // none | most | least
 const SORT_LABEL = { none: 'Orden: lista original', most: 'Orden: más días primero ↓', least: 'Orden: menos días primero ↑' };
@@ -83,6 +84,9 @@ function renderDays() {
 // ---------- Tabla de tareas ----------
 // Las tareas pueden cruzar la medianoche (23:00–1:00) y las que empiezan antes de las 06:00
 // son la madrugada del día siguiente, aunque figuren en el día del turno de noche.
+// Horario: una tarea es "de mañana" si empieza antes de las 12:00 (desde las 06:00) y "de noche" si empieza desde las 21:00 o de madrugada.
+const periodOf = (start) => { const m = toMin(start); return m < 360 || m >= 1260 ? 'noche' : m < 720 ? 'manana' : 'tarde'; };
+const horarioMismatch = (h, start) => (h === 'madrugador' && periodOf(start) === 'noche') || (h === 'trasnochador' && periodOf(start) === 'manana');
 const NIGHT = 360;
 const durMin = (t) => (toMin(t.end) - toMin(t.start) + 1440) % 1440;
 const fmtDur = (t) => (durMin(t) / 60).toFixed(2).replace('.', ',');
@@ -122,7 +126,8 @@ function pickerOptions(t) {
 
 // Un hueco por voluntario necesario: el tamaño de la fila no cambia al asignar.
 function slots(t) {
-  const out = t.volunteers.map((v) => `<div class="slot" draggable="true" data-task="${t.id}" data-person="${v.id}" title="Arrastra sobre otro nombre para intercambiar"><span class="vol">${esc(v.nombre)}</span><button data-rm="${t.id}:${v.id}" title="Quitar">×</button></div>`);
+  const out = t.volunteers.map((v) => { const bad = showTime && horarioMismatch(people.find((p) => p.id === v.id)?.horario, t.start);
+    return `<div class="slot${bad ? ' mis' : ''}" draggable="true" data-task="${t.id}" data-person="${v.id}" title="${bad ? 'No es el momento del día apropiado para esta persona' : 'Arrastra sobre otro nombre para intercambiar'}"><span class="vol">${esc(v.nombre)}</span><button data-rm="${t.id}:${v.id}" title="Quitar">×</button></div>`; });
   for (let i = t.volunteers.length; i < t.needed; i++) {
     out.push(i === t.volunteers.length
       ? `<div class="slot"><select data-add="${t.id}">${pickerOptions(t)}</select></div>`
@@ -316,7 +321,7 @@ function renderPeople() {
   const tot = `<tr class="tot"><td colspan="6" style="text-align:right">${loadMode ? 'Horas asignadas por día (lista filtrada)' : 'Presentes por día (lista filtrada)'}</td>
     ${days.map((d) => `<td>${loadMode ? (Math.round(list.reduce((n, p) => n + (workload[p.id]?.[d.date] || 0), 0) / 6) / 10).toString().replace('.', ',') : list.filter((p) => p.av[d.date] === 1).length}</td>`).join('')}<td></td><td></td></tr>`;
   $('#people-table').innerHTML = head + '<tbody>' + tot + list.map((p) => `<tr>
-    <td><b>${esc(p.nombre)}</b>${p.por_confirmar ? ' <span class="conf">POR CONFIRMAR</span>' : ''}</td>
+    <td><b>${esc(p.nombre)}</b>${p.horario === 'madrugador' ? ' <span class="hz" title="Madrugadorx">☀</span>' : p.horario === 'trasnochador' ? ' <span class="hz" title="Trasnochadorx">☾</span>' : ''}${p.por_confirmar ? ' <span class="conf">POR CONFIRMAR</span>' : ''}</td>
     <td title="${esc(p.grupo)}">${esc(GRUPO_CORTO[p.grupo] || p.grupo)}</td>
     <td>${teamsOf(p).map((t) => `<span class="eq ${esc(t)}">${esc(t)}</span>`).join('')}</td>
     <td class="aptc">${p.skill_ids.map((id) => `<span class="apt">${esc(skillName(id))}</span>`).join('')}${p.aptitudes ? `<span class="apt-note">${esc(p.aptitudes)}</span>` : ''}</td>
@@ -449,6 +454,7 @@ function openPerson(p) {
   pform.elements.nombre.value = v.nombre;
   pform.elements.grupo.value = v.grupo || 'VOLUNTARIAS';
   pform.elements.aptitudes.value = v.aptitudes;
+  pform.elements.horario.value = v.horario || 'indiferente';
   pform.elements.por_confirmar.checked = !!v.por_confirmar;
   pAv = Object.fromEntries(cfg.days.map((d) => [d.date, v.av[d.date] ?? null]));
   renderPersonDays();
@@ -459,7 +465,7 @@ function openPerson(p) {
 pform.addEventListener('submit', async (e) => {
   e.preventDefault();
   const f = pform.elements;
-  const body = { nombre: f.nombre.value, grupo: f.grupo.value, aptitudes: f.aptitudes.value,
+  const body = { nombre: f.nombre.value, grupo: f.grupo.value, horario: f.horario.value, aptitudes: f.aptitudes.value,
     por_confirmar: f.por_confirmar.checked, av: pAv, skill_ids: pickers.person.ids,
     equipo: [...document.querySelectorAll('#person-teams input:checked')].map((i) => i.value) };
   try {
@@ -587,7 +593,7 @@ async function openCandidates(taskId) {
   $('#detail-body').innerHTML = (r.candidates.length
     ? `<p class="cand-note">Personas disponibles ese día, del equipo ${t.uncovered.length ? `y con la aptitud que falta (${esc(t.uncovered.join(', '))}) ` : ''}que aún no están en esta tarea.${t.skills.length && !t.uncovered.length ? ' La aptitud pedida ya la aporta alguien de la tarea.' : ''}</p>
       <div class="table-wrap"><table><thead><tr><th>Persona</th><th>Estado</th><th>Qué hace ese día</th><th class="num">Horas</th><th></th></tr></thead><tbody>${r.candidates.map((c) => `<tr>
-        <td><b>${esc(c.nombre)}</b><div>${c.teams.map((x) => `<span class="eq">${esc(x)}</span>`).join('')}${c.skills.map((x) => `<span class="apt">${esc(x)}</span>`).join('')}</div></td>
+        <td><b>${esc(c.nombre)}</b>${c.horario_mismatch ? ' <span class="cst-hz" title="No es el momento del día apropiado para esta persona">⏰ horario</span>' : ''}<div>${c.teams.map((x) => `<span class="eq">${esc(x)}</span>`).join('')}${c.skills.map((x) => `<span class="apt">${esc(x)}</span>`).join('')}</div></td>
         <td><span class="cst ${c.status}">${{ libre: 'Libre', solape: 'Ocupada/o a esa hora', tope: `Pasaría de ${h(r.cap)} h` }[c.status]}</span>${c.status === 'solape' && c.over ? `<div class="hint">y además pasaría de ${h(r.cap)} h</div>` : ''}</td>
         <td>${c.blockers.length ? c.blockers.map(busy).join('') : c.tasks.length ? c.tasks.map(busy).join('') : '<span class="hint">Sin tareas ese día</span>'}</td>
         <td class="num">${h(c.minutes)} h → ${h(c.minutes + t.duration)} h</td>
@@ -597,7 +603,7 @@ async function openCandidates(taskId) {
   $('#detail-dialog').showModal();
 }
 
-const KIND = { ausente: 'Ausente', equipo: 'Otro equipo', aptitud: 'Sin aptitud', solape: 'Solape', horas: 'Más de 4 h' };
+const KIND = { horario: 'Horario', ausente: 'Ausente', equipo: 'Otro equipo', aptitud: 'Sin aptitud', solape: 'Solape', horas: 'Más de 4 h' };
 function renderConflicts() {
   const { unresolved: un, assignments: as, total } = conflicts;
   $('#conflicts-sub').textContent = total ? `${total} ${total === 1 ? 'conflicto' : 'conflictos'}` : '';
@@ -633,6 +639,7 @@ $('#assign-run').onclick = async () => {
     $('#assign-result').innerHTML = `<p class="res-sum"><b>${r.assigned}</b> asignaciones nuevas. ${r.unresolved.length
       ? `Quedan <b>${r.unresolved.length}</b> ${r.unresolved.length === 1 ? 'tarea sin resolver' : 'tareas sin resolver'} (${slots} ${slots === 1 ? 'hueco vacío' : 'huecos vacíos'}).`
       : 'No queda ninguna tarea sin resolver. 🎉'}</p>`
+      + (r.time_mismatch ? `<p class="hint">${r.time_mismatch} ${r.time_mismatch === 1 ? 'asignación no respeta' : 'asignaciones no respetan'} el horario de la persona (madrugadorx / trasnochadorx); no había otra opción.</p>` : '')
       + (r.imbalanced ? `<p class="hint">${r.imbalanced} ${r.imbalanced === 1 ? 'asignación aumenta' : 'asignaciones aumentan'} el desequilibrio Técnica / Bar-Cocina de alguien que está en ambos grupos (no había otra opción).</p>` : '')
       + (r.unresolved.length ? `<div class="res-list"><table><thead><tr><th>Día</th><th>Hora</th><th>Tarea</th><th class="num">Faltan</th><th>Motivo</th><th></th></tr></thead><tbody>${r.unresolved.map((u) =>
         `<tr><td>${fmtDay(u.date)}</td><td>${u.start}–${u.end}</td><td><span class="tag ${u.area}">${esc(cfg.areas[u.area])}</span> <b>${esc(u.name)}</b>${u.space ? ` · ${esc(u.space)}` : ''}</td><td class="num">${u.missing}</td><td>${esc(u.reason)}</td><td><button data-cand="${u.task_id}">+ Detalles</button></td></tr>`).join('')}</tbody></table></div>` : '')
@@ -642,6 +649,7 @@ $('#assign-run').onclick = async () => {
     await loadTasks();
   } catch (e) { toast(e.message); } finally { btn.disabled = false; }
 };
+$('#time-toggle').onclick = () => { showTime = !showTime; store.set('showTime', showTime); $('#time-toggle').classList.toggle('active', showTime); renderTasks(); };
 $('#add-person').onclick = () => openPerson(null);
 $('#add-task').onclick = () => openTask(null);
 $('#people-search').oninput = renderPeople;
@@ -664,6 +672,7 @@ $('#clock-input').onchange = (e) => { const ms = Date.parse(e.target.value + ':0
   $('#clock-input').value = clockStr();
   $('#clock-toggle').title = `Reloj simulado: ${clockStr().replace('T', ' ')}`;
   renderAllSkillPickers();
+  $('#time-toggle').classList.toggle('active', showTime);
   const known = new Set(store.get('knownAreas', ['cocina', 'bar', 'tecnica']));
   for (const k of Object.keys(cfg.areas)) if (!known.has(k)) areas.add(k);
   store.set('knownAreas', Object.keys(cfg.areas)); store.set('areas', [...areas]);

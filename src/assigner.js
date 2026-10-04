@@ -4,7 +4,7 @@
 // Siempre: la persona está ese día, es del equipo del área, no se solapa con otra tarea suya
 // y no supera MAX_DAILY_MINUTES de trabajo ese día. Lo que no se pueda cubrir se deja vacío.
 import { db } from './db.js';
-import { AREA_TEAMS, AREAS, AREA_GROUP, STRICT_AREAS, MAX_DAILY_MINUTES as CAP } from './config.js';
+import { AREA_TEAMS, AREAS, AREA_GROUP, STRICT_AREAS, MAX_DAILY_MINUTES as CAP, horarioMismatch } from './config.js';
 
 const NIGHT = 360; // los turnos que empiezan antes de las 06:00 son madrugada del día siguiente
 const toMin = (h) => +h.slice(0, 2) * 60 + +h.slice(3);
@@ -13,8 +13,8 @@ export const range = (t) => { const s0 = toMin(t.start), s = s0 < NIGHT ? s0 + 1
 export const overlap = (a, b) => a[0] < b[1] && b[0] < a[1];
 
 function loadPeople() {
-  const people = new Map(db.prepare('SELECT id, nombre, equipo FROM people').all().map((p) => [p.id, {
-    id: p.id, nombre: p.nombre, av: {}, skills: new Set(),
+  const people = new Map(db.prepare('SELECT id, nombre, equipo, horario FROM people').all().map((p) => [p.id, {
+    id: p.id, nombre: p.nombre, horario: p.horario, av: {}, skills: new Set(),
     teams: new Set(p.equipo.split(',').map((x) => x.trim()).filter(Boolean)),
   }]));
   for (const r of db.prepare('SELECT person_id, date, present FROM availability').all()) people.get(r.person_id).av[r.date] = r.present;
@@ -30,6 +30,7 @@ export function autoAssign({ dates, areas, replace }) {
   const insert = db.prepare('INSERT OR IGNORE INTO assignments (task_id, person_id) VALUES (?,?)');
 
   result.imbalanced = 0;
+  result.time_mismatch = 0;
 
   db.exec('BEGIN');
   try {
@@ -55,6 +56,8 @@ export function autoAssign({ dates, areas, replace }) {
       const d = gh.get(p.id)[g] - gh.get(p.id)[o];
       return d < 0 ? 0 : d > 0 ? 2 : 1;
     };
+    // Choque de horario (madrugadorx en turno de noche / trasnochadorx en turno de mañana): se evita si hay alternativa.
+    const mis = (p, c) => (horarioMismatch(p.horario, c.t.start) ? 1 : 0);
     const gap = (p, c) => { const g = AREA_GROUP[c.t.area], o = g === 't' ? 'cb' : 't'; return g && dual(p) ? gh.get(p.id)[g] - gh.get(p.id)[o] : 0; };
 
     for (const date of dates) {
@@ -81,6 +84,7 @@ export function autoAssign({ dates, areas, replace }) {
         && !(busy.get(p.id) || []).some((r) => overlap(r, c.range));
       const give = (p, c) => {
         if (balClass(p, c) === 2) result.imbalanced++;
+        if (mis(p, c)) result.time_mismatch++;
         insert.run(c.t.id, p.id); c.who.add(p.id); c.missing--; book(p.id, c.t); result.assigned++;
         if (AREA_GROUP[c.t.area]) gh.get(p.id)[AREA_GROUP[c.t.area]] += c.dur;
       };
@@ -93,7 +97,7 @@ export function autoAssign({ dates, areas, replace }) {
           if (!unc.length) break;
           const n = (p) => unc.filter((s) => p.skills.has(s)).length;
           const best = c.pool.filter((p) => eligible(p, c) && n(p) > 0)
-            .sort((a, b) => n(b) - n(a) || balClass(a, c) - balClass(b, c) || gap(a, c) - gap(b, c) || lo(a) - lo(b) || a.id - b.id)[0];
+            .sort((a, b) => n(b) - n(a) || mis(a, c) - mis(b, c) || balClass(a, c) - balClass(b, c) || gap(a, c) - gap(b, c) || lo(a) - lo(b) || a.id - b.id)[0];
           if (!best) break;
           give(best, c);
         }
@@ -103,7 +107,7 @@ export function autoAssign({ dates, areas, replace }) {
       const fillRest = (c) => {
         while (c.missing > 0 && !uncovered(c).length) {
           const best = fill(c).filter((p) => eligible(p, c))
-            .sort((a, b) => balClass(a, c) - balClass(b, c) || gap(a, c) - gap(b, c) || lo(a) - lo(b) || a.teams.size - b.teams.size || a.id - b.id)[0];
+            .sort((a, b) => mis(a, c) - mis(b, c) || balClass(a, c) - balClass(b, c) || gap(a, c) - gap(b, c) || lo(a) - lo(b) || a.teams.size - b.teams.size || a.id - b.id)[0];
           if (!best) break;
           give(best, c);
         }
@@ -172,6 +176,7 @@ export function findConflicts() {
   for (const r of rows) {
     const p = people.get(r.person_id);
     if (p.av[r.date] === 0) add('ausente', p, r, 'figura como ausente ese día');
+    if (horarioMismatch(p.horario, r.start)) add('horario', p, r, 'no es el momento del día apropiado para esta persona');
     if (!AREA_TEAMS[r.area].some((x) => p.teams.has(x))) add('equipo', p, r, `no es del equipo de ${AREAS[r.area]}`);
     const k = `${r.person_id}|${r.date}`;
     (byPersonDay.get(k) || byPersonDay.set(k, []).get(k)).push(r);
@@ -230,9 +235,9 @@ export function candidatesFor(taskId) {
       const blockers = tasks.filter((o) => overlap(range(o), mineRange)).map(brief);
       const over = minutes + dur > CAP;
       return { id: p.id, nombre: p.nombre, teams: [...p.teams], skills: [...p.skills].filter((s) => uncoveredIds.includes(s) || skillIds.includes(s)).map((s) => skillNames.get(s)),
-        minutes, tasks: tasks.map(brief), blockers, over, status: blockers.length ? 'solape' : over ? 'tope' : 'libre' };
+        minutes, tasks: tasks.map(brief), blockers, over, horario_mismatch: horarioMismatch(p.horario, t.start), status: blockers.length ? 'solape' : over ? 'tope' : 'libre' };
     })
-    .sort((a, b) => ['libre', 'tope', 'solape'].indexOf(a.status) - ['libre', 'tope', 'solape'].indexOf(b.status) || a.minutes - b.minutes || a.nombre.localeCompare(b.nombre));
+    .sort((a, b) => ['libre', 'tope', 'solape'].indexOf(a.status) - ['libre', 'tope', 'solape'].indexOf(b.status) || a.horario_mismatch - b.horario_mismatch || a.minutes - b.minutes || a.nombre.localeCompare(b.nombre));
   return { task: { ...t, assigned: inTask.size, missing: Math.max(0, t.needed - inTask.size), duration: dur,
     skills: skillIds.map((s) => skillNames.get(s)), uncovered: uncoveredIds.map((s) => skillNames.get(s)) }, cap: CAP, candidates };
 }

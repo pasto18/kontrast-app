@@ -47,3 +47,13 @@ export const MAX_DAILY_MINUTES = 240;
 
 // Los dos grandes grupos de la hoja de voluntarios: Bar/Neteja/Cuina ("cb") y Técnica ("t").
 export const AREA_GROUP = { cocina: 'cb', bar: 'cb', tecnica: 't', taquilla: null };
+
+// Horario preferido de las personas. Una tarea es "de mañana" si empieza antes de las 12:00 (y desde las 06:00)
+// y "de noche" si empieza a las 21:00 o después (incluida la madrugada, antes de las 06:00).
+export const HORARIOS = ['madrugador', 'trasnochador', 'indiferente'];
+export function periodOf(start) {
+  const m = +start.slice(0, 2) * 60 + +start.slice(3);
+  return m < 360 || m >= 1260 ? 'noche' : m < 720 ? 'manana' : 'tarde';
+}
+// Hay choque cuando alguien madrugador cae en un turno de noche o alguien trasnochador en uno de mañana.
+export const horarioMismatch = (horario, start) => (horario === 'madrugador' && periodOf(start) === 'noche') || (horario === 'trasnochador' && periodOf(start) === 'manana');

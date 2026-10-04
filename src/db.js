@@ -20,7 +20,8 @@ CREATE TABLE IF NOT EXISTS people (
   equipo TEXT NOT NULL DEFAULT '',   -- CUINA, NETEJA, BAR, TÉCNICA... separados por coma
   sectores TEXT NOT NULL DEFAULT '', -- cocina_bar, tecnica (derivado de equipo)
   aptitudes TEXT NOT NULL DEFAULT '',
-  por_confirmar INTEGER NOT NULL DEFAULT 0
+  por_confirmar INTEGER NOT NULL DEFAULT 0,
+  horario TEXT NOT NULL DEFAULT 'indiferente'  -- madrugador | trasnochador | indiferente
 );
 CREATE TABLE IF NOT EXISTS availability (
   person_id INTEGER NOT NULL REFERENCES people(id) ON DELETE CASCADE,
@@ -91,6 +92,9 @@ CREATE TABLE IF NOT EXISTS assignments (
 
 // La "disponibilidad" 50/100 de la hoja ya no se usa: solo importa el balance entre grupos.
 if (db.prepare("SELECT 1 FROM pragma_table_info('people') WHERE name = 'dispo'").get()) db.exec('ALTER TABLE people DROP COLUMN dispo');
+
+// Horario preferido (bases creadas antes de existir esta condición).
+if (!db.prepare("SELECT 1 FROM pragma_table_info('people') WHERE name = 'horario'").get()) db.exec("ALTER TABLE people ADD COLUMN horario TEXT NOT NULL DEFAULT 'indiferente'");
 
 // El equipo "BILLETERÍA" pasa a llamarse TAQUILLA en toda la aplicación.
 db.exec("UPDATE people SET equipo = REPLACE(REPLACE(equipo, 'BILLETERÍA', 'TAQUILLA'), 'BILLETERIA', 'TAQUILLA') WHERE equipo LIKE '%BILLETER%'");
@@ -237,6 +241,16 @@ function seedTaquillas() {
   for (const show of db.prepare('SELECT * FROM shows ORDER BY date, time').all()) if (!SIN_TAQUILLA.includes(show.discipline)) createTaquilla(show);
 }
 
+// Datos de prueba: reparte al azar (con semilla fija) 40 % trasnochadorx, 30 % madrugadorx y 30 % indiferente.
+function seedHorarios() {
+  const ids = db.prepare('SELECT id FROM people ORDER BY id').all().map((r) => r.id);
+  let x = 20250406; const rnd = () => ((x = (x * 1664525 + 1013904223) % 4294967296) / 4294967296);
+  for (let i = ids.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [ids[i], ids[j]] = [ids[j], ids[i]]; }
+  const nT = Math.round(ids.length * 0.4), nM = Math.round(ids.length * 0.3);
+  const up = db.prepare('UPDATE people SET horario = ? WHERE id = ?');
+  ids.forEach((id, i) => up.run(i < nT ? 'trasnochador' : i < nT + nM ? 'madrugador' : 'indiferente', id));
+}
+
 const norm = (s) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 export function suggestCompanies(taskName) {
   const n = norm(taskName);
@@ -277,4 +291,5 @@ export function seedIfEmpty() {
   applySeed('companias-v1', seedCompanias);
   applySeed('skills-v1', seedSkills);
   applySeed('taquilla-v1', seedTaquillas);
+  applySeed('horarios-azar-v1', seedHorarios);
 }

@@ -45,6 +45,7 @@
       <button id="others-toggle" title="En la lista de voluntarios de cada tarea, incluir gente que se apuntó a otros equipos">Mostrar también otros equipos</button>
       <button id="auto-assign" title="Asignar voluntarios automáticamente">✨ Asignar automáticamente</button>
       <button id="view-conflicts" title="Se activa cuando hay tareas sin cubrir tras asignar, o asignaciones con problemas" disabled>Ver conflictos <span id="conflicts-badge" class="cbadge" hidden></span></button>
+      <button id="time-toggle" title="Resalta en la lista de voluntarios a quien está en un turno que no es de su horario (madrugadorx / trasnochadorx)">Resaltar choques de horario</button>
       <button id="add-task" class="primary">+ Nueva tarea</button>
     </div>
     <div class="table-wrap"><table id="tasks-table"></table></div>
@@ -106,6 +107,7 @@
     <div class="grid">
       <label class="wide">Nombre <input name="nombre" required maxlength="80"></label>
       <label class="wide">Grupo <select name="grupo"></select></label>
+      <label class="wide">Horario <select name="horario"><option value="indiferente">Indiferente (cualquier momento)</option><option value="madrugador">Madrugadorx (turnos de antes de las 12:00)</option><option value="trasnochador">Trasnochadorx (turnos desde las 21:00)</option></select></label>
       <div class="wide lab">Equipo <div id="person-teams" class="checks"></div></div>
       <div class="wide lab">Aptitudes <div id="sp-person" class="skill-picker"></div></div>
       <label class="wide">Notas / aptitudes de la hoja original <input name="aptitudes" maxlength="120"></label>
@@ -141,6 +143,7 @@
       <li>Primero se cubren todos los turnos de taquilla (solo con gente de TAQUILLA, que es poca); quien sobre se aprovecha luego en las tareas de sus otros equipos.</li>
       <li>Después se cubren las tareas que piden aptitudes: basta con que una persona de la tarea tenga cada aptitud; el resto de voluntarios puede ser cualquiera del equipo.</li>
       <li>Después, el resto con personas del equipo del área (Cocina y limpieza ← CUINA/NETEJA, Bar ← BAR, Técnica ← TÉCNICA, Taquilla ← TAQUILLA) que estén ese día.</li>
+      <li>Se tiene en cuenta el horario de cada persona: madrugadorx para turnos que empiezan antes de las 12:00, trasnochadorx para los que empiezan desde las 21:00 (o de madrugada) e indiferente para cualquiera. Es una preferencia: si no hay otra opción se asigna igualmente.</li>
       <li>Máximo 4 h por persona y día, sin solapes. Lo que no se pueda cubrir queda vacío.</li>
       <li>Lo que ya está asignado se respeta y cuenta para las 4 h.</li>
       <li>Quien está en Técnica y en Bar/Cocina/Limpieza: se intenta repartir sus horas mitad y mitad (contando todo el festival) y no ponerlo otra vez en un grupo si ya lleva más horas ahí. Si no hay otra opción, se asigna igualmente. Todo el festival de una vez equilibra mejor.</li>
