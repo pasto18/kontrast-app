@@ -4,7 +4,7 @@
 // Siempre: la persona está ese día, es del equipo del área, no se solapa con otra tarea suya
 // y no supera MAX_DAILY_MINUTES de trabajo ese día. Lo que no se pueda cubrir se deja vacío.
 import { db } from './db.js';
-import { AREA_TEAMS, AREAS, AREA_GROUP, MAX_DAILY_MINUTES as CAP } from './config.js';
+import { AREA_TEAMS, AREAS, AREA_GROUP, STRICT_AREAS, MAX_DAILY_MINUTES as CAP } from './config.js';
 
 const NIGHT = 360; // los turnos que empiezan antes de las 06:00 son madrugada del día siguiente
 const toMin = (h) => +h.slice(0, 2) * 60 + +h.slice(3);
@@ -86,10 +86,8 @@ export function autoAssign({ dates, areas, replace }) {
       };
       const lo = (p) => load.get(p.id) || 0;
 
-      // Fase 1: tareas con aptitudes (las más difíciles primero). Basta con que alguien de la tarea tenga cada
-      // aptitud pedida; el resto de voluntarios no necesita tenerla.
-      const phase1 = cts.filter((c) => c.skills.length).sort((a, b) => a.pool.length - b.pool.length || a.range[0] - b.range[0]);
-      for (const c of phase1) {
+      // Cubrir las aptitudes pedidas: basta con que alguien de la tarea tenga cada una; el resto no necesita tenerla.
+      const coverSkills = (c) => {
         while (c.missing > 0) {
           const unc = uncovered(c);
           if (!unc.length) break;
@@ -99,19 +97,28 @@ export function autoAssign({ dates, areas, replace }) {
           if (!best) break;
           give(best, c);
         }
-      }
-      // Fase 2: resto de huecos (tareas sin aptitudes, o con las aptitudes ya cubiertas) con cualquiera del equipo.
-      // Primero las que tienen menos gente posible; se reparte la carga y el balance Técnica / Bar-Cocina.
+      };
+      // Rellenar el resto de huecos con cualquiera del equipo (reparte la carga y el balance Técnica / Bar-Cocina).
       const fill = (c) => (c.skills.length ? c.fullPool : c.pool);
-      const phase2 = cts.filter((c) => c.missing > 0 && !uncovered(c).length).sort((a, b) => fill(a).length - fill(b).length || a.range[0] - b.range[0]);
-      for (const c of phase2) {
-        while (c.missing > 0) {
+      const fillRest = (c) => {
+        while (c.missing > 0 && !uncovered(c).length) {
           const best = fill(c).filter((p) => eligible(p, c))
             .sort((a, b) => balClass(a, c) - balClass(b, c) || gap(a, c) - gap(b, c) || lo(a) - lo(b) || a.teams.size - b.teams.size || a.id - b.id)[0];
           if (!best) break;
           give(best, c);
         }
-      }
+      };
+      const bySize = (a, b) => fill(a).length - fill(b).length || a.range[0] - b.range[0];
+
+      // Fase 0: taquilla (gente escasa y exclusiva de ese equipo): se cubren primero todos sus turnos del día.
+      // Quien sobre queda libre y se aprovecha después en las tareas de sus otros equipos.
+      const strict = cts.filter((c) => STRICT_AREAS.includes(c.t.area));
+      for (const c of [...strict].sort(bySize)) { coverSkills(c); fillRest(c); }
+      // Fase 1: tareas con aptitudes (las más difíciles primero).
+      const rest = cts.filter((c) => !STRICT_AREAS.includes(c.t.area));
+      for (const c of rest.filter((x) => x.skills.length).sort((a, b) => a.pool.length - b.pool.length || a.range[0] - b.range[0])) coverSkills(c);
+      // Fase 2: resto de huecos. Primero las tareas con menos gente posible.
+      for (const c of rest.filter((x) => x.missing > 0).sort(bySize)) fillRest(c);
 
       for (const c of cts.filter((x) => x.missing > 0)) {
         let reason;
