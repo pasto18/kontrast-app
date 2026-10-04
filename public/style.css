@@ -167,3 +167,7 @@ tr.flash{animation:flash 1.6s}
 .busy{display:block;font-size:12px;white-space:normal}
 #detail-body td{vertical-align:top}
 #people-sort.active{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+
+/* mismas medidas con y sin carga horaria */
+#people-table th.d,#people-table td.d{width:36px;min-width:36px;max-width:36px;padding:4px 1px;overflow:hidden}
+#people-table tr.tot td.d,#people-table tr.tot td:not([colspan]){font-size:10px;padding:2px 0;white-space:nowrap}

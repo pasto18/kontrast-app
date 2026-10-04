@@ -277,7 +277,7 @@ function peopleLegend() {
 
 function daySquare(p, d) {
   const v = p.av[d.date], m = workload[p.id]?.[d.date] || 0;
-  if (!loadMode) return `<i class="sq ${v === 1 ? 'on' : v === 0 ? 'off' : 'unk'}" title="${d.label}: ${v === 1 ? 'está' : v === 0 ? 'no está' : 'sin datos'}"></i>`;
+  if (!loadMode) return `<i class="sq hrs ${v === 1 ? 'on' : v === 0 ? 'off' : 'unk'}" title="${d.label}: ${v === 1 ? 'está' : v === 0 ? 'no está' : 'sin datos'}"></i>`;
   const cls = v === 0 ? 'off' : v == null ? 'unk' : m === 0 ? 'bone' : m < cfg.maxMinutes ? 'ok' : m === cfg.maxMinutes ? 'full' : 'over';
   const state = v === 0 ? 'no está' : v == null ? 'sin datos' : `${fmtH(m) || 0} h`;
   return `<i class="sq hrs ${cls}" title="${d.label}: ${state}${v === 0 && m ? ` (¡asignada/o ${fmtH(m)} h estando ausente!)` : ''}">${m ? fmtH(m) : ''}</i>`;
@@ -298,7 +298,7 @@ function renderPeople() {
   const head = `<thead><tr><th>Nombre</th><th>Grupo</th><th>Equipo</th><th class="num">Dispo</th><th class="num" title="Días presentes en el festival">Días</th>
     ${days.map((d) => `<th class="d" title="${d.label}">${d.dow.slice(0, 1).toUpperCase()}<br>${d.day}</th>`).join('')}<th>Aptitudes</th><th></th></tr></thead>`;
   const tot = `<tr class="tot"><td colspan="5" style="text-align:right">${loadMode ? 'Horas asignadas por día (lista filtrada)' : 'Presentes por día (lista filtrada)'}</td>
-    ${days.map((d) => `<td>${loadMode ? fmtH(list.reduce((n, p) => n + (workload[p.id]?.[d.date] || 0), 0)) || 0 : list.filter((p) => p.av[d.date] === 1).length}</td>`).join('')}<td></td><td></td></tr>`;
+    ${days.map((d) => `<td>${loadMode ? (Math.round(list.reduce((n, p) => n + (workload[p.id]?.[d.date] || 0), 0) / 6) / 10).toString().replace('.', ',') : list.filter((p) => p.av[d.date] === 1).length}</td>`).join('')}<td></td><td></td></tr>`;
   $('#people-table').innerHTML = head + '<tbody>' + tot + list.map((p) => `<tr>
     <td><b>${esc(p.nombre)}</b>${p.por_confirmar ? ' <span class="conf">POR CONFIRMAR</span>' : ''}</td>
     <td>${esc(p.grupo)}</td>
