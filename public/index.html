@@ -44,6 +44,7 @@
       <div id="area-filter" class="chips"></div>
       <button id="others-toggle" title="En la lista de voluntarios de cada tarea, incluir gente que se apuntó a otros equipos">Mostrar también otros equipos</button>
       <button id="auto-assign" title="Asignar voluntarios automáticamente">✨ Asignar automáticamente</button>
+      <button id="view-conflicts" title="Se activa cuando hay tareas sin cubrir tras asignar, o asignaciones con problemas" disabled>Ver conflictos <span id="conflicts-badge" class="cbadge" hidden></span></button>
       <button id="add-task" class="primary">+ Nueva tarea</button>
     </div>
     <div class="table-wrap"><table id="tasks-table"></table></div>
@@ -146,6 +147,10 @@
     <div class="actions"><button type="button" id="assign-cancel">Cancelar</button><button type="button" id="assign-run" class="primary">Asignar</button></div>
   </div>
   <div id="assign-result" hidden></div>
+</dialog>
+<dialog id="conflicts-dialog">
+  <div class="detail-head"><div><h2>Conflictos</h2><div id="conflicts-sub" class="sub"></div></div><button id="conflicts-close" title="Cerrar">✕</button></div>
+  <div id="conflicts-body"></div>
 </dialog>
 <datalist id="people-names"></datalist>
 <datalist id="space-names"></datalist>

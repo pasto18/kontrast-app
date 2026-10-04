@@ -151,3 +151,12 @@ tr.flash{animation:flash 1.6s}
 .sq.on{background:var(--bone);border:1px solid #cfc7b0}
 .slot[draggable=true]{cursor:grab}.slot.dragging{opacity:.35}
 .slot.drop{outline:2px solid var(--accent);background:color-mix(in srgb,var(--accent) 14%,transparent)}
+
+#view-conflicts:disabled{opacity:.45;cursor:not-allowed;border-color:var(--line)}
+#view-conflicts:not(:disabled){border-color:var(--bad);color:var(--bad);font-weight:600}
+.cbadge{display:inline-block;min-width:18px;padding:0 6px;border-radius:99px;background:var(--bad);color:#fff;font-size:11px;font-weight:700;text-align:center}
+#conflicts-dialog{width:min(980px,96vw);max-height:90vh}
+#conflicts-body h4{margin:14px 0 6px;font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--mute)}
+#conflicts-body table{font-size:12px}#conflicts-body td{white-space:normal}
+.kind{display:inline-block;font-size:10px;font-weight:700;padding:0 7px;border-radius:99px;color:#fff;background:var(--bad);white-space:nowrap}
+.kind.horas{background:#c2410c}.kind.solape{background:#7048e8}.kind.equipo{background:#0b7285}.kind.aptitud{background:#a06a00}.kind.ausente{background:#555}

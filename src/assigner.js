@@ -4,7 +4,7 @@
 // Siempre: la persona está ese día, es del equipo del área, no se solapa con otra tarea suya
 // y no supera MAX_DAILY_MINUTES de trabajo ese día. Lo que no se pueda cubrir se deja vacío.
 import { db } from './db.js';
-import { AREA_TEAMS, MAX_DAILY_MINUTES as CAP } from './config.js';
+import { AREA_TEAMS, AREAS, MAX_DAILY_MINUTES as CAP } from './config.js';
 
 const NIGHT = 360; // los turnos que empiezan antes de las 06:00 son madrugada del día siguiente
 const toMin = (h) => +h.slice(0, 2) * 60 + +h.slice(3);
@@ -33,6 +33,8 @@ export function autoAssign({ dates, areas, replace }) {
   try {
     for (const date of dates) {
       const tasks = db.prepare('SELECT * FROM tasks WHERE date = ?').all(date);
+      const clearMark = db.prepare('DELETE FROM assign_unresolved WHERE task_id = ?');
+      for (const t of tasks) if (areas.includes(t.area)) clearMark.run(t.id);
       if (replace) {
         const del = db.prepare('DELETE FROM assignments WHERE task_id = ?');
         for (const t of tasks) if (areas.includes(t.area)) del.run(t.id);
@@ -91,6 +93,7 @@ export function autoAssign({ dates, areas, replace }) {
         else reason = 'los candidatos están en otra tarea a la misma hora';
         result.unresolved.push({ task_id: c.t.id, date, start: c.t.start, end: c.t.end, area: c.t.area, name: c.t.name, space: c.t.space, missing: c.missing, reason });
         result.unresolved_slots += c.missing;
+        db.prepare('INSERT OR REPLACE INTO assign_unresolved (task_id, reason) VALUES (?,?)').run(c.t.id, reason);
       }
     }
     db.exec('COMMIT');
@@ -106,4 +109,44 @@ export function workload() {
     days[r.date] = (days[r.date] || 0) + durMin(r);
   }
   return out;
+}
+
+const order = (a, b) => a.date.localeCompare(b.date) || (a.start < '06:00') - (b.start < '06:00') || a.start.localeCompare(b.start);
+const fmtH = (min) => (min / 60).toFixed(2).replace(/\.?0+$/, '').replace('.', ',');
+
+// Problemas en las asignaciones actuales (hechas a mano o automáticas):
+// ausente, fuera de equipo, sin la aptitud pedida, solapes y exceso de horas.
+export function findConflicts() {
+  const people = new Map(loadPeople().map((p) => [p.id, p]));
+  const skillNames = new Map(db.prepare('SELECT id, name FROM skills').all().map((s) => [s.id, s.name]));
+  const taskSkills = new Map();
+  for (const r of db.prepare('SELECT task_id, skill_id FROM task_skills').all()) (taskSkills.get(r.task_id) || taskSkills.set(r.task_id, []).get(r.task_id)).push(r.skill_id);
+  const rows = db.prepare('SELECT a.person_id, t.* FROM assignments a JOIN tasks t ON t.id = a.task_id').all();
+  const out = [];
+  const add = (kind, p, t, message) => out.push({ kind, person_id: p.id, nombre: p.nombre, date: t.date, task_id: t.id, task_name: t.name,
+    start: t.start, end: t.end, area: t.area, space: t.space, message });
+  const byPersonDay = new Map();
+  for (const r of rows) {
+    const p = people.get(r.person_id), need = taskSkills.get(r.id) || [];
+    if (p.av[r.date] === 0) add('ausente', p, r, 'figura como ausente ese día');
+    if (!AREA_TEAMS[r.area].some((x) => p.teams.has(x))) add('equipo', p, r, `no es del equipo de ${AREAS[r.area]}`);
+    if (need.length && !need.some((s) => p.skills.has(s))) add('aptitud', p, r, `no tiene la aptitud pedida (${need.map((s) => skillNames.get(s)).join(', ')})`);
+    const k = `${r.person_id}|${r.date}`;
+    (byPersonDay.get(k) || byPersonDay.set(k, []).get(k)).push(r);
+  }
+  for (const list of byPersonDay.values()) {
+    const p = people.get(list[0].person_id);
+    for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) {
+      if (!overlap(range(list[i]), range(list[j]))) continue;
+      const [a, b] = [list[i], list[j]].sort(order);
+      add('solape', p, b, `se solapa con "${a.name}" (${a.start}–${a.end})`);
+    }
+    const mins = list.reduce((n, t) => n + durMin(t), 0);
+    if (mins > CAP) {
+      const first = [...list].sort(order)[0];
+      out.push({ kind: 'horas', person_id: p.id, nombre: p.nombre, date: first.date, task_id: null, task_name: '', start: first.start, end: '', area: first.area, space: '',
+        message: `trabaja ${fmtH(mins)} h ese día (tope ${CAP / 60} h): ${[...list].sort(order).map((t) => `${t.name} ${t.start}–${t.end}`).join(' · ')}` });
+    }
+  }
+  return out.sort(order);
 }

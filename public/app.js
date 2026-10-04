@@ -60,7 +60,13 @@ async function api(url, method = 'GET', body) {
 function toast(msg) { const t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => (t.hidden = true), msg.startsWith('⚠') ? 8000 : 3500); }
 const run = (p) => p.catch((e) => { toast(e.message); });
 
-async function loadTasks() { tasks = await api(`/api/tasks?date=${selDay}`); renderTasks(); }
+let conflicts = { unresolved: [], assignments: [], total: 0 };
+function renderConflictsButton() {
+  $('#view-conflicts').disabled = !conflicts.total;
+  $('#conflicts-badge').hidden = !conflicts.total; $('#conflicts-badge').textContent = conflicts.total;
+}
+async function refreshConflicts() { conflicts = await api('/api/conflicts'); renderConflictsButton(); if ($('#conflicts-dialog').open) renderConflicts(); }
+async function loadTasks() { [tasks, conflicts] = await Promise.all([api(`/api/tasks?date=${selDay}`), api('/api/conflicts')]); renderTasks(); renderConflictsButton(); if ($('#conflicts-dialog').open) renderConflicts(); }
 function selectDay(date) { selDay = date; store.set('day', date); renderDays(); return loadTasks(); }
 
 // ---------- Selector de día ----------
@@ -447,6 +453,7 @@ $('#person-delete').onclick = async () => {
 };
 async function reloadPeople() {
   people = await api('/api/people');
+  run(refreshConflicts());
   $('#people-names').innerHTML = people.map((p) => `<option value="${esc(p.nombre)}">`).join('');
   renderPeople();
   if (tasks.length) renderTasks();
@@ -513,7 +520,8 @@ document.addEventListener('click', (e) => {
   else if (d.company) run(openDetail('company', d.company));
   else if (d.space) run(openDetail('space', d.space));
   else if (d.coRm) { dlgCompanies = dlgCompanies.filter((id) => id !== +d.coRm); renderDlgCompanies(); }
-  else if (d.goto) { $('#detail-dialog').close(); showView('voluntarios'); selectDay(d.goto); }
+  else if (d.cfxRm) { const [t, p] = d.cfxRm.split(':'); run(api(`/api/tasks/${t}/volunteers/${p}`, 'DELETE').then(loadTasks)); }
+  else if (d.goto) { $('#detail-dialog').close(); $('#conflicts-dialog').close(); showView('voluntarios'); selectDay(d.goto); }
 });
 document.addEventListener('change', (e) => {
   const s = e.target;
@@ -544,6 +552,22 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && e.target.dataset?.skInput) { e.preventDefault(); run(saveOtherSkill(e.target.dataset.skInput)); }
 });
 $('#load-toggle').onclick = () => { loadMode = !loadMode; store.set('loadMode', loadMode); run(refreshWorkload().then(renderPeople)); };
+const KIND = { ausente: 'Ausente', equipo: 'Otro equipo', aptitud: 'Sin aptitud', solape: 'Solape', horas: 'Más de 4 h' };
+function renderConflicts() {
+  const { unresolved: un, assignments: as, total } = conflicts;
+  $('#conflicts-sub').textContent = total ? `${total} ${total === 1 ? 'conflicto' : 'conflictos'}` : '';
+  if (!total) { $('#conflicts-body').innerHTML = '<div class="empty">No hay conflictos. 🎉</div>'; return; }
+  const when = (x) => `<td>${fmtDay(x.date)}</td><td>${x.start}${x.end ? `–${x.end}` : ''}</td>`;
+  const task = (x) => `<span class="tag ${x.area}">${esc(cfg.areas[x.area])}</span> <b>${esc(x.name ?? x.task_name)}</b>${x.space ? ` · ${esc(x.space)}` : ''}`;
+  $('#conflicts-body').innerHTML =
+    (un.length ? `<h4>Tareas sin cubrir (${un.length})</h4><div class="res-list"><table><thead><tr><th>Día</th><th>Hora</th><th>Tarea</th><th class="num">Faltan</th><th>Motivo</th><th></th></tr></thead><tbody>${un.map((u) =>
+      `<tr>${when(u)}<td>${task(u)}</td><td class="num">${u.missing}</td><td>${esc(u.reason)}</td><td><button data-goto="${u.date}">Ver ›</button></td></tr>`).join('')}</tbody></table></div>` : '')
+    + (as.length ? `<h4>Asignaciones con problemas (${as.length})</h4><div class="res-list"><table><thead><tr><th>Día</th><th>Hora</th><th>Persona</th><th>Problema</th><th>Tarea</th><th></th></tr></thead><tbody>${as.map((c) =>
+      `<tr>${when(c)}<td><b>${esc(c.nombre)}</b></td><td><span class="kind ${c.kind}">${KIND[c.kind]}</span> ${esc(c.message)}</td><td>${c.task_id ? task(c) : ''}</td>
+       <td style="white-space:nowrap"><button data-goto="${c.date}">Ver ›</button>${c.task_id ? ` <button data-cfx-rm="${c.task_id}:${c.person_id}" title="Quitar a esta persona de la tarea">Quitar</button>` : ''}</td></tr>`).join('')}</tbody></table></div>` : '');
+}
+$('#view-conflicts').onclick = () => { renderConflicts(); $('#conflicts-dialog').showModal(); };
+$('#conflicts-close').onclick = () => $('#conflicts-dialog').close();
 $('#auto-assign').onclick = () => {
   const day = cfg.days.find((d) => d.date === selDay);
   $('#assign-day-label').textContent = `Solo el día seleccionado (${day.label})`;

@@ -3,7 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { db, seedIfEmpty, sectoresDe } from './db.js';
 import { DAYS, AREAS, AREA_TEAMS, MAX_DAILY_MINUTES } from './config.js';
-import { autoAssign, workload, range, overlap, durMin } from './assigner.js';
+import { autoAssign, workload, findConflicts, range, overlap, durMin } from './assigner.js';
 
 seedIfEmpty();
 const app = express();
@@ -269,6 +269,17 @@ app.post('/api/assignments/swap', (req, res) => {
     db.exec('COMMIT');
   } catch (e) { db.exec('ROLLBACK'); throw e; }
   res.json({ ok: true, warnings: [...assignmentWarnings(pa, tb), ...assignmentWarnings(pb, ta)] });
+});
+
+// Conflictos: tareas que el asignador dejó sin cubrir (y siguen sin cubrir) + problemas en las asignaciones.
+app.get('/api/conflicts', (_req, res) => {
+  const unresolved = db.prepare(`SELECT t.id AS task_id, t.date, t.start, t.end, t.area, t.name, t.space, u.reason,
+      t.needed - (SELECT COUNT(*) FROM assignments a WHERE a.task_id = t.id) AS missing
+    FROM assign_unresolved u JOIN tasks t ON t.id = u.task_id
+    WHERE t.needed > (SELECT COUNT(*) FROM assignments a WHERE a.task_id = t.id)
+    ORDER BY t.date, t.start < '06:00', t.start`).all();
+  const assignments = findConflicts();
+  res.json({ unresolved, assignments, total: unresolved.length + assignments.length });
 });
 
 app.get('/api/workload', (_req, res) => res.json(workload()));
