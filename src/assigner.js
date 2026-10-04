@@ -29,16 +29,34 @@ export function autoAssign({ dates, areas, replace }) {
   const result = { assigned: 0, unresolved: [], unresolved_slots: 0 };
   const insert = db.prepare('INSERT OR IGNORE INTO assignments (task_id, person_id) VALUES (?,?)');
 
+  result.imbalanced = 0;
+
   db.exec('BEGIN');
   try {
+    // Primero se limpia lo que se va a rehacer, para que los totales por grupo no cuenten asignaciones que desaparecen.
+    const clearMark = db.prepare('DELETE FROM assign_unresolved WHERE task_id = ?');
+    const del = db.prepare('DELETE FROM assignments WHERE task_id = ?');
+    for (const date of dates) for (const t of db.prepare('SELECT id, area FROM tasks WHERE date = ?').all(date)) {
+      if (!areas.includes(t.area)) continue;
+      clearMark.run(t.id);
+      if (replace) del.run(t.id);
+    }
+
+    // Horas de cada persona en cada grupo (cb = Bar/Cocina/Limpieza, t = Técnica) en todo el festival.
+    // Quien está en ambos grupos debería repartir su tiempo mitad y mitad.
+    const gh = new Map(people.map((p) => [p.id, { cb: 0, t: 0 }]));
+    for (const r of db.prepare('SELECT a.person_id, t.area, t.start, t.end FROM assignments a JOIN tasks t ON t.id = a.task_id').all()) gh.get(r.person_id)[AREA_GROUP[r.area]] += durMin(r);
+    const dual = (p) => p.teams.has('TÉCNICA') && ['CUINA', 'NETEJA', 'BAR'].some((x) => p.teams.has(x));
+    // Clase de un candidato para una tarea: 0 = va por detrás en ese grupo (conviene ponerlo), 1 = neutro, 2 = ya va por delante (se evita).
+    const balClass = (p, c) => {
+      if (!dual(p)) return 1;
+      const g = AREA_GROUP[c.t.area], o = g === 't' ? 'cb' : 't', d = gh.get(p.id)[g] - gh.get(p.id)[o];
+      return d < 0 ? 0 : d > 0 ? 2 : 1;
+    };
+    const gap = (p, c) => { const g = AREA_GROUP[c.t.area], o = g === 't' ? 'cb' : 't'; return dual(p) ? gh.get(p.id)[g] - gh.get(p.id)[o] : 0; };
+
     for (const date of dates) {
       const tasks = db.prepare('SELECT * FROM tasks WHERE date = ?').all(date);
-      const clearMark = db.prepare('DELETE FROM assign_unresolved WHERE task_id = ?');
-      for (const t of tasks) if (areas.includes(t.area)) clearMark.run(t.id);
-      if (replace) {
-        const del = db.prepare('DELETE FROM assignments WHERE task_id = ?');
-        for (const t of tasks) if (areas.includes(t.area)) del.run(t.id);
-      }
       const assigned = new Map(tasks.map((t) => [t.id, new Set()]));
       for (const r of db.prepare('SELECT a.task_id, a.person_id FROM assignments a JOIN tasks t ON t.id = a.task_id WHERE t.date = ?').all(date)) assigned.get(r.task_id).add(r.person_id);
       const taskSkills = new Map(tasks.map((t) => [t.id, []]));
@@ -57,7 +75,11 @@ export function autoAssign({ dates, areas, replace }) {
 
       const eligible = (p, c) => !c.who.has(p.id) && (load.get(p.id) || 0) + c.dur <= CAP
         && !(busy.get(p.id) || []).some((r) => overlap(r, c.range));
-      const give = (p, c) => { insert.run(c.t.id, p.id); c.who.add(p.id); c.missing--; book(p.id, c.t); result.assigned++; };
+      const give = (p, c) => {
+        if (balClass(p, c) === 2) result.imbalanced++;
+        insert.run(c.t.id, p.id); c.who.add(p.id); c.missing--; book(p.id, c.t); result.assigned++;
+        gh.get(p.id)[AREA_GROUP[c.t.area]] += c.dur;
+      };
       const lo = (p) => load.get(p.id) || 0;
 
       // Fase 1: tareas con aptitudes (las más difíciles primero). Se intenta cubrir cada aptitud pedida.
@@ -67,7 +89,7 @@ export function autoAssign({ dates, areas, replace }) {
           const covered = new Set([...c.who].flatMap((pid) => [...byId.get(pid).skills]));
           const score = (p) => c.skills.filter((s) => p.skills.has(s)).length + 10 * c.skills.filter((s) => p.skills.has(s) && !covered.has(s)).length;
           const best = c.pool.filter((p) => eligible(p, c))
-            .sort((a, b) => score(b) - score(a) || lo(a) - lo(b) || b.dispo - a.dispo || a.id - b.id)[0];
+            .sort((a, b) => score(b) - score(a) || balClass(a, c) - balClass(b, c) || gap(a, c) - gap(b, c) || lo(a) - lo(b) || b.dispo - a.dispo || a.id - b.id)[0];
           if (!best) break;
           give(best, c);
         }
@@ -77,7 +99,7 @@ export function autoAssign({ dates, areas, replace }) {
       for (const c of phase2) {
         while (c.missing > 0) {
           const best = c.pool.filter((p) => eligible(p, c))
-            .sort((a, b) => lo(a) - lo(b) || a.teams.size - b.teams.size || b.dispo - a.dispo || a.id - b.id)[0];
+            .sort((a, b) => balClass(a, c) - balClass(b, c) || gap(a, c) - gap(b, c) || lo(a) - lo(b) || a.teams.size - b.teams.size || b.dispo - a.dispo || a.id - b.id)[0];
           if (!best) break;
           give(best, c);
         }

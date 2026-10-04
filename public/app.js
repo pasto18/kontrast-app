@@ -631,6 +631,7 @@ $('#assign-run').onclick = async () => {
     $('#assign-result').innerHTML = `<p class="res-sum"><b>${r.assigned}</b> asignaciones nuevas. ${r.unresolved.length
       ? `Quedan <b>${r.unresolved.length}</b> ${r.unresolved.length === 1 ? 'tarea sin resolver' : 'tareas sin resolver'} (${slots} ${slots === 1 ? 'hueco vacío' : 'huecos vacíos'}).`
       : 'No queda ninguna tarea sin resolver. 🎉'}</p>`
+      + (r.imbalanced ? `<p class="hint">${r.imbalanced} ${r.imbalanced === 1 ? 'asignación aumenta' : 'asignaciones aumentan'} el desequilibrio Técnica / Bar-Cocina de alguien que está en ambos grupos (no había otra opción).</p>` : '')
       + (r.unresolved.length ? `<div class="res-list"><table><thead><tr><th>Día</th><th>Hora</th><th>Tarea</th><th class="num">Faltan</th><th>Motivo</th><th></th></tr></thead><tbody>${r.unresolved.map((u) =>
         `<tr><td>${fmtDay(u.date)}</td><td>${u.start}–${u.end}</td><td><span class="tag ${u.area}">${esc(cfg.areas[u.area])}</span> <b>${esc(u.name)}</b>${u.space ? ` · ${esc(u.space)}` : ''}</td><td class="num">${u.missing}</td><td>${esc(u.reason)}</td><td><button data-cand="${u.task_id}">Candidatos</button></td></tr>`).join('')}</tbody></table></div>` : '')
       + '<div class="actions"><button type="button" id="assign-close" class="primary">Cerrar</button></div>';
