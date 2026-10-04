@@ -185,3 +185,18 @@ tr.flash{animation:flash 1.6s}
 .hz{font-size:12px;margin-left:4px;color:var(--mute)}
 .kind.horario{background:#e8a317;color:#1d1d22}
 .cst-hz{font-size:11px;color:#a06a00;font-weight:600}
+
+/* edición en la tabla de Personas */
+button.mini{font-size:11px;padding:1px 7px;margin-right:4px;white-space:nowrap}
+.hzc{text-align:center;font-size:15px}
+#people-table .d.ed{cursor:pointer}
+.eq-edit{display:flex;flex-direction:column;gap:2px;background:var(--card);border:1px solid var(--accent);border-radius:6px;padding:4px 8px}
+.eq-edit label{display:flex;gap:5px;align-items:center;font-size:12px}
+.apt button{border:0;background:none;padding:0 0 0 4px;color:inherit;opacity:.6;font-size:11px}.apt button:hover{opacity:1}
+select.psk{font-size:11px;padding:1px 2px;border-style:dashed;max-width:92px;color:var(--mute)}
+.aptc .other{display:inline-flex;gap:3px}.aptc .other input{font-size:11px;width:110px;padding:1px 4px}.aptc .other button{padding:0 6px;font-size:11px}
+.ed-note{cursor:text}
+
+.ptl{table-layout:fixed;width:100%}
+.ptl td:nth-child(1){width:105px}.ptl td:nth-child(2){width:60px}.ptl td:nth-child(3){width:150px}.ptl td:nth-child(4){width:135px}.ptl td:nth-child(6){width:220px}.ptl td:nth-child(7){width:70px}
+.ptl td{overflow:hidden;text-overflow:ellipsis}.ptl td.v{white-space:normal}

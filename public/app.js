@@ -306,7 +306,12 @@ function avgHours(p) {
   return `${(Math.round(mins / past.length / 6) / 10).toString().replace('.', ',')} h`;
 }
 
-function renderPeople() {
+let pEditing = null, pOther = null, pDirty = false;
+const HORARIO_ICON = { madrugador: ['☀', 'Madrugadorx'], trasnochador: ['☾', 'Trasnochadorx'], indiferente: ['–', 'Indiferente'] };
+
+function renderPeople(force = false) {
+  if (!force && (pEditing || pOther !== null)) { pDirty = true; return; } // no pisar una celda en edición
+  pDirty = false;
   $('#load-toggle').classList.toggle('active', loadMode);
   const q = $('#people-search').value.trim().toLowerCase();
   const list = people.filter((p) => (!q || p.nombre.toLowerCase().includes(q))
@@ -316,20 +321,130 @@ function renderPeople() {
   if (peopleSort !== 'none') list.sort((a, b) => (peopleSort === 'most' ? present(b) - present(a) : present(a) - present(b)) || a.nombre.localeCompare(b.nombre, 'es', { sensitivity: 'base' }));
   $('#people-sort').textContent = SORT_LABEL[peopleSort];
   $('#people-sort').classList.toggle('active', peopleSort !== 'none');
-  const head = `<thead><tr><th>Nombre</th><th>Grupo</th><th>Equipo</th><th>Aptitudes</th><th title="Horas de más en Técnica (T) o en Bar/Cocina/Limpieza (B/C). Solo para quien está en ambos grupos">Balance</th><th class="num" title="Días presentes en el festival">Días</th>
+  const head = `<thead><tr><th>Nombre</th><th>Grupo</th><th>Equipo</th><th title="Horario preferido: ☀ madrugadorx, ☾ trasnochadorx, – indiferente">Horario</th><th>Aptitudes</th><th title="Horas de más en Técnica (T) o en Bar/Cocina/Limpieza (B/C). Solo para quien está en ambos grupos">Balance</th><th class="num" title="Días presentes en el festival">Días</th>
     ${days.map((d) => `<th class="d" title="${d.label}">${d.dow.slice(0, 1).toUpperCase()}<br>${d.day}</th>`).join('')}<th class="num" title="Horas trabajadas por día de estadía, hasta la fecha del reloj">Prom./día</th><th></th></tr></thead>`;
-  const tot = `<tr class="tot"><td colspan="6" style="text-align:right">${loadMode ? 'Horas asignadas por día (lista filtrada)' : 'Presentes por día (lista filtrada)'}</td>
+  const tot = `<tr class="tot"><td colspan="7" style="text-align:right">${loadMode ? 'Horas asignadas por día (lista filtrada)' : 'Presentes por día (lista filtrada)'}</td>
     ${days.map((d) => `<td>${loadMode ? (Math.round(list.reduce((n, p) => n + (workload[p.id]?.[d.date] || 0), 0) / 6) / 10).toString().replace('.', ',') : list.filter((p) => p.av[d.date] === 1).length}</td>`).join('')}<td></td><td></td></tr>`;
-  $('#people-table').innerHTML = head + '<tbody>' + tot + list.map((p) => `<tr>
-    <td><b>${esc(p.nombre)}</b>${p.horario === 'madrugador' ? ' <span class="hz" title="Madrugadorx">☀</span>' : p.horario === 'trasnochador' ? ' <span class="hz" title="Trasnochadorx">☾</span>' : ''}${p.por_confirmar ? ' <span class="conf">POR CONFIRMAR</span>' : ''}</td>
-    <td title="${esc(p.grupo)}">${esc(GRUPO_CORTO[p.grupo] || p.grupo)}</td>
-    <td>${teamsOf(p).map((t) => `<span class="eq ${esc(t)}">${esc(t)}</span>`).join('')}</td>
-    <td class="aptc">${p.skill_ids.map((id) => `<span class="apt">${esc(skillName(id))}</span>`).join('')}${p.aptitudes ? `<span class="apt-note">${esc(p.aptitudes)}</span>` : ''}</td>
+  $('#people-table').innerHTML = head + '<tbody>' + tot + list.map((p) => `<tr data-id="${p.id}">
+    <td class="ed" data-field="nombre"><button class="mini" data-ptasks="${p.id}" title="Ver las tareas asignadas a esta persona">Ver tareas</button> <b>${esc(p.nombre)}</b>${p.por_confirmar ? ' <span class="conf">POR CONFIRMAR</span>' : ''}</td>
+    <td class="ed" data-field="grupo" title="${esc(p.grupo)}">${esc(GRUPO_CORTO[p.grupo] || p.grupo)}</td>
+    <td class="ed" data-field="equipo">${teamsOf(p).map((t) => `<span class="eq ${esc(t)}">${esc(t)}</span>`).join('') || '<span class="hint">—</span>'}</td>
+    <td class="ed hzc" data-field="horario" title="${HORARIO_ICON[p.horario || 'indiferente'][1]}">${HORARIO_ICON[p.horario || 'indiferente'][0]}</td>
+    <td class="aptc">${personSkillCell(p)}</td>
     <td class="balc">${balanceCell(p)}</td>
     <td class="num"><b>${present(p)}</b></td>
-    ${days.map((d) => `<td class="d">${daySquare(p, d)}</td>`).join('')}
+    ${days.map((d) => `<td class="d ed" data-tday="${d.date}">${daySquare(p, d)}</td>`).join('')}
     <td class="num">${avgHours(p)}</td>
-    <td><button class="icon" data-pedit="${p.id}" title="Editar persona">✎</button></td></tr>`).join('') + '</tbody>';
+    <td><button class="icon" data-pedit="${p.id}" title="Editar todo">✎</button></td></tr>`).join('') + '</tbody>';
+  const ot = $('[data-psk-input]'); if (ot) ot.focus();
+}
+
+function personSkillCell(p) {
+  const chips = p.skill_ids.map((id) => `<span class="apt">${esc(skillName(id))}<button data-psk-rm="${p.id}:${id}" title="Quitar">×</button></span>`).join('');
+  const note = p.aptitudes ? `<span class="apt-note ed-note" title="Clic para editar la nota">${esc(p.aptitudes)}</span>` : '';
+  if (pOther === p.id) return `${chips}<span class="other"><input data-psk-input="${p.id}" placeholder="Nueva aptitud…" maxlength="40"><button data-psk-save="${p.id}">+</button><button data-psk-cancel="${p.id}" title="Cancelar">×</button></span>${note}`;
+  const have = new Set(p.skill_ids);
+  return `${chips}<select class="psk" data-psk-add="${p.id}"><option value="">+ aptitud</option>${skills.filter((k) => !have.has(k.id)).map((k) => `<option value="${k.id}">${esc(k.name)}</option>`).join('')}<option value="__other">Otro…</option></select>${note}`;
+}
+
+// ---- Edición en la tabla de Personas ----
+function personPayload(p, patch) {
+  return { nombre: p.nombre, grupo: p.grupo, horario: p.horario || 'indiferente', equipo: teamsOf(p), aptitudes: p.aptitudes, por_confirmar: !!p.por_confirmar,
+    skill_ids: p.skill_ids, av: Object.fromEntries(cfg.days.map((d) => [d.date, p.av[d.date] ?? null])), ...patch };
+}
+async function savePerson(p, patch) {
+  try { await api(`/api/people/${p.id}`, 'PUT', personPayload(p, patch)); } catch (e) { toast(e.message); }
+  await reloadPeople();
+}
+
+function startPersonEdit(id, field, host) {
+  const p = people.find((x) => x.id === id);
+  const mk = (tag, props = {}) => Object.assign(document.createElement(tag), props);
+  let el, done = false, cleanup = () => {};
+  if (field === 'equipo') {
+    const teams = [...new Set([...DEFAULT_TEAMS, ...people.flatMap(teamsOf)])], mine = teamsOf(p);
+    el = mk('div', { className: 'eq-edit' });
+    el.innerHTML = teams.map((t) => `<label><input type="checkbox" value="${esc(t)}" ${mine.includes(t) ? 'checked' : ''}> ${esc(t)}</label>`).join('');
+  } else if (field === 'grupo' || field === 'horario') {
+    el = mk('select');
+    const opts = field === 'horario' ? [['indiferente', 'Indiferente'], ['madrugador', 'Madrugadorx'], ['trasnochador', 'Trasnochadorx']]
+      : [...new Set(['VOLUNTARIAS', 'CASA', 'SIDE', ...people.map((x) => x.grupo).filter(Boolean)])].map((g) => [g, g]);
+    el.innerHTML = opts.map(([v, l]) => `<option value="${esc(v)}" ${v === (field === 'horario' ? p.horario || 'indiferente' : p.grupo) ? 'selected' : ''}>${esc(l)}</option>`).join('');
+  } else {
+    el = mk('input', { type: 'text', value: p[field] || '', maxlength: field === 'nombre' ? 80 : 120 });
+  }
+  el.className = (el.className ? el.className + ' ' : '') + 'cell-input';
+  if (field === 'equipo') el.className = 'eq-edit';
+  if (host.tagName === 'TD') host.textContent = ''; else host.replaceChildren();
+  host.appendChild(el);
+  pEditing = { id, field };
+  if (field !== 'equipo') { el.focus(); if (el.select) el.select(); }
+  const finish = async (save) => {
+    if (done) return; done = true; pEditing = null; cleanup();
+    let patch = null;
+    if (save) {
+      if (field === 'equipo') { const eq = [...el.querySelectorAll('input:checked')].map((i) => i.value); patch = { equipo: eq }; if (eq.join() === teamsOf(p).join()) patch = null; }
+      else { const v = el.value.trim(); if (field === 'nombre' && !v) patch = null; else if (v !== (p[field] || (field === 'horario' ? 'indiferente' : ''))) patch = { [field]: v }; }
+    }
+    if (patch) await savePerson(p, patch); else renderPeople();
+  };
+  if (field === 'equipo') {
+    const outside = (e) => { if (!el.contains(e.target)) finish(true); };
+    document.addEventListener('mousedown', outside, true);
+    cleanup = () => document.removeEventListener('mousedown', outside, true);
+    el.addEventListener('keydown', (e) => { if (e.key === 'Enter') finish(true); else if (e.key === 'Escape') finish(false); });
+    el.querySelector('input').focus();
+  } else {
+    el.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); finish(true); } else if (e.key === 'Escape') finish(false); });
+    el.addEventListener('blur', () => finish(true));
+    if (el.tagName === 'SELECT') el.addEventListener('change', () => finish(true));
+  }
+}
+
+$('#people-table').addEventListener('click', (e) => {
+  if (e.target.closest('button, select, input') || pEditing) return;
+  const tr = e.target.closest('tr[data-id]'); if (!tr) return;
+  const id = +tr.dataset.id;
+  const note = e.target.closest('.ed-note');
+  if (note) return startPersonEdit(id, 'aptitudes', note);
+  const td = e.target.closest('td.ed'); if (!td) return;
+  if (td.dataset.tday) { // cuadrado de un día: sin datos → está → no está
+    const p = people.find((x) => x.id === id), v = p.av[td.dataset.tday] ?? null;
+    return run(savePerson(p, { av: { ...personPayload(p, {}).av, [td.dataset.tday]: v === null ? 1 : v === 1 ? 0 : null } }));
+  }
+  startPersonEdit(id, td.dataset.field, td);
+});
+
+async function savePersonSkillOther(id) {
+  const name = $(`[data-psk-input="${id}"]`).value.trim();
+  if (!name) return;
+  const sk = await api('/api/skills', 'POST', { name });
+  if (!skills.some((k) => k.id === sk.id)) skills.push(sk);
+  renderAllSkillPickers();
+  const p = people.find((x) => x.id === id);
+  pOther = null;
+  await savePerson(p, { skill_ids: [...new Set([...p.skill_ids, sk.id])] });
+}
+
+// ---- Tareas asignadas a una persona ----
+async function openPersonTasks(id) {
+  const p = people.find((x) => x.id === id);
+  const tasks = await api(`/api/people/${id}/tasks`);
+  const byDay = new Map();
+  for (const t of tasks) (byDay.get(t.date) || byDay.set(t.date, []).get(t.date)).push(t);
+  const mins = (l) => l.reduce((n, t) => n + durMin(t), 0);
+  $('#detail-title').textContent = `Tareas de ${p.nombre}`;
+  $('#detail-sub').textContent = tasks.length ? `${tasks.length} ${tasks.length === 1 ? 'tarea' : 'tareas'} · ${fmtH(mins(tasks)) || 0} h en total` : '';
+  $('#detail-body').innerHTML = tasks.length ? [...byDay].map(([date, l]) => {
+    const m = mins(l), over = m > cfg.maxMinutes;
+    return `<h4>${fmtDay(date)} · <span style="color:${over ? 'var(--bad)' : 'inherit'}">${fmtH(m) || 0} h${over ? ` (tope ${fmtH(cfg.maxMinutes)} h)` : ''}</span>${p.av[date] === 0 ? ' · <span style="color:var(--bad)">figura como ausente</span>' : ''}</h4>
+      <div class="table-wrap"><table class="ptl"><tbody>${l.map((t) => `<tr><td>${t.start}–${t.end}</td><td class="num">${fmtH(durMin(t))} h</td>
+        <td><span class="tag ${t.area}">${esc(cfg.areas[t.area])}</span></td><td>${esc(t.space)}</td>
+        <td><b>${esc(t.name)}</b>${horarioMismatch(p.horario, t.start) ? ' <span class="cst-hz" title="No es el momento del día apropiado para esta persona">⏰ horario</span>' : ''}${t.companies.length ? `<div>${t.companies.map((c) => `<span class="cotag">${esc(c.name)}</span>`).join('')}</div>` : ''}</td>
+        <td class="v">${t.volunteers.filter((v) => v.id !== id).map((v) => esc(v.nombre)).join(', ')}</td>
+        <td><button data-goto="${t.date}" title="Ver en la tabla de voluntarios">Ver ›</button></td></tr>`).join('')}</tbody></table></div>`;
+  }).join('') : '<div class="empty">Esta persona no tiene tareas asignadas.</div>';
+  $('#detail-dialog').showModal();
 }
 
 function showView(v) {
@@ -549,6 +664,10 @@ document.addEventListener('click', (e) => {
   else if (d.company) run(openDetail('company', d.company));
   else if (d.space) run(openDetail('space', d.space));
   else if (d.coRm) { dlgCompanies = dlgCompanies.filter((id) => id !== +d.coRm); renderDlgCompanies(); }
+  else if (d.ptasks) run(openPersonTasks(+d.ptasks));
+  else if (d.pskRm) { const [pid, sid] = d.pskRm.split(':').map(Number); const p = people.find((x) => x.id === pid); run(savePerson(p, { skill_ids: p.skill_ids.filter((k) => k !== sid) })); }
+  else if (d.pskSave) run(savePersonSkillOther(+d.pskSave));
+  else if (d.pskCancel) { pOther = null; renderPeople(); }
   else if (d.cand) run(openCandidates(+d.cand));
   else if (d.candAssign) { const [t, p, over] = d.candAssign.split(':').map(Number); run(api(`/api/tasks/${t}/volunteers`, 'POST', { person_id: p, accept_overtime: !!over })).finally(async () => { await loadTasks(); run(openCandidates(t)); }); }
   else if (d.cfxRm) { const [t, p] = d.cfxRm.split(':'); run(api(`/api/tasks/${t}/volunteers/${p}`, 'DELETE').then(loadTasks)); }
@@ -556,6 +675,12 @@ document.addEventListener('click', (e) => {
 });
 document.addEventListener('change', (e) => {
   const s = e.target;
+  if (s.dataset.pskAdd !== undefined && s.value) {
+    const id = +s.dataset.pskAdd, p = people.find((x) => x.id === id);
+    if (s.value === '__other') { pOther = id; renderPeople(true); }
+    else run(savePerson(p, { skill_ids: [...p.skill_ids, +s.value] }));
+    return;
+  }
   if (s.dataset.tskAdd !== undefined && s.value) {
     const id = +s.dataset.tskAdd, t = tasks.find((x) => x.id === id);
     if (s.value === '__other') { otherTask = id; renderTasks(true); }
@@ -575,6 +700,11 @@ $('#detail-close').onclick = () => $('#detail-dialog').close();
 $('#companies-search').oninput = renderCompanies;
 $('#spaces-search').oninput = renderSpaces;
 document.addEventListener('keydown', (e) => {
+  if (e.target.dataset?.pskInput) {
+    if (e.key === 'Enter') { e.preventDefault(); run(savePersonSkillOther(+e.target.dataset.pskInput)); }
+    else if (e.key === 'Escape') { pOther = null; renderPeople(); }
+    return;
+  }
   if (e.target.dataset?.tskInput) {
     if (e.key === 'Enter') { e.preventDefault(); run(saveTaskSkillOther(+e.target.dataset.tskInput)); }
     else if (e.key === 'Escape') { otherTask = null; renderTasks(); }

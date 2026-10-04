@@ -133,6 +133,11 @@ app.get('/api/companies/:id/tasks', (req, res) => {
     WHERE tc.company_id = ? ${ORDER.replace(/(date|start|end|id)\b/g, 't.$1')}`).all(+req.params.id)));
 });
 
+app.get('/api/people/:id/tasks', (req, res) => {
+  res.json(withRelations(db.prepare(`SELECT t.* FROM tasks t JOIN assignments a ON a.task_id = t.id WHERE a.person_id = ?
+    ORDER BY t.date, t.start < '06:00', t.start, t.end, t.id`).all(+req.params.id)));
+});
+
 app.get('/api/spaces', (_req, res) => {
   res.json(db.prepare(`SELECT space AS name, COUNT(*) task_count, GROUP_CONCAT(DISTINCT area) areas, MIN(date) first_date, MAX(date) last_date
     FROM tasks WHERE space <> '' GROUP BY space`).all().sort(byName).map((r) => ({ ...r, areas: r.areas.split(',') })));
