@@ -206,3 +206,9 @@ select.psk{font-size:11px;padding:1px 2px;border-style:dashed;max-width:92px;col
 
 th.sortable{cursor:pointer;user-select:none}th.sortable:hover{color:var(--ink)}
 .sarrow{color:var(--accent);font-size:10px}
+
+/* tarea a la que se ha saltado desde Conflictos / Ver tareas: borde y fondo violeta que oscilan */
+tr.focus{outline:3px solid transparent;outline-offset:-3px;animation:focusBorder 1.2s ease-in-out 6}
+tr.focus td{animation:focusBg 1.2s ease-in-out 6}
+@keyframes focusBorder{0%,100%{outline-color:transparent}50%{outline-color:#7048e8}}
+@keyframes focusBg{0%,100%{background:transparent}50%{background:color-mix(in srgb,#7048e8 20%,transparent)}}

@@ -206,7 +206,7 @@ export function findConflicts() {
     const cap = capOf(p.teams);
     if (mins > cap && !(ok && mins <= ok.minutes)) {
       const first = [...list].sort(order)[0];
-      out.push({ kind: 'horas', person_id: p.id, nombre: p.nombre, date: first.date, task_id: null, task_name: '', start: first.start, end: '', area: first.area, space: '',
+      out.push({ kind: 'horas', person_id: p.id, nombre: p.nombre, date: first.date, task_id: null, task_ids: list.map((t) => t.id), task_name: '', start: first.start, end: '', area: first.area, space: '',
         message: `trabaja ${fmtH(mins)} h ese día (tope ${cap / 60} h): ${[...list].sort(order).map((t) => `${t.name} ${t.start}–${t.end}`).join(' · ')}` });
     }
   }

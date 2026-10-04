@@ -138,6 +138,7 @@ function slots(t) {
 }
 
 let editing = null, otherTask = null, dirty = false, flashId = null, drag = null;
+let focusIds = [], focusTimer = null; // tareas a las que se ha saltado desde Conflictos / Ver tareas / detalles
 
 function skillCell(t) {
   const chips = t.skills.map((k) => `<span class="skc">${esc(k.name)}<button data-tsk-rm="${t.id}:${k.id}" title="Quitar">×</button></span>`).join('');
@@ -167,7 +168,7 @@ function renderTasks(force = false) {
   $('#tasks-table').innerHTML = head + '<tbody>' + rows.map((t) => {
     const st = taskStatus(t), n = t.volunteers.length;
     const cls = t.needed === 0 ? 'f3' : n === 0 ? 'f0' : n < t.needed ? 'f1' : 'f2';
-    return `<tr data-id="${t.id}" class="${st === 'future' ? '' : st}${t.id === flashId ? ' flash' : ''}">
+    return `<tr data-id="${t.id}" class="${st === 'future' ? '' : st}${t.id === flashId ? ' flash' : ''}${focusIds.includes(t.id) ? ' focus' : ''}">
       <td class="tm ed" data-field="start">${st === 'now' ? '<i class="live-dot" title="En curso"></i>' : ''}${t.start}</td><td class="tm ed" data-field="end">${t.end}</td>
       <td class="num tm ed" data-field="dur">${fmtDur(t)}</td>
       <td class="ed" data-field="area"><span class="tag ${t.area}">${esc(cfg.areas[t.area])}</span></td>
@@ -259,6 +260,24 @@ table.addEventListener('drop', (e) => {
     .then((r) => { if (r.warnings.length) toast('⚠ ' + r.warnings.join(' · ')); })).finally(loadTasks);
 });
 table.addEventListener('dragend', () => { drag = null; if (dirty) renderTasks(); else document.querySelectorAll('.slot.dragging,.slot.drop').forEach((x) => x.classList.remove('dragging', 'drop')); });
+
+// Salta a un día y destaca (con scroll) las tareas indicadas. Si un filtro de área o la búsqueda las ocultan, se quitan.
+async function goToTasks(date, ids) {
+  focusIds = (ids || '').split(',').map(Number).filter(Boolean);
+  await selectDay(date);
+  const targets = tasks.filter((t) => focusIds.includes(t.id));
+  let changed = false;
+  for (const t of targets) if (!areas.has(t.area)) { areas.add(t.area); changed = true; }
+  if (changed) { store.set('areas', [...areas]); renderAreaFilter(); }
+  const tk = searchTokens();
+  if (tk.length && targets.some((t) => !tk.every((k) => taskHaystack(t).includes(k)))) $('#task-search').value = '';
+  renderTasks(true);
+  clearTimeout(focusTimer);
+  if (!targets.length) return;
+  await new Promise((r) => requestAnimationFrame(r));
+  $('tr.focus')?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  focusTimer = setTimeout(() => { focusIds = []; document.querySelectorAll('tr.focus').forEach((r) => r.classList.remove('focus')); }, 7500);
+}
 
 async function saveTaskSkillOther(id) {
   const name = $(`[data-tsk-input="${id}"]`).value.trim();
@@ -503,7 +522,7 @@ async function openPersonTasks(id) {
         <td><span class="tag ${t.area}">${esc(cfg.areas[t.area])}</span></td><td>${esc(t.space)}</td>
         <td><b>${esc(t.name)}</b>${horarioMismatch(p.horario, t.start) ? ' <span class="cst-hz" title="No es el momento del día apropiado para esta persona">⏰ horario</span>' : ''}${t.companies.length ? `<div>${t.companies.map((c) => `<span class="cotag">${esc(c.name)}</span>`).join('')}</div>` : ''}</td>
         <td class="v">${t.volunteers.filter((v) => v.id !== id).map((v) => esc(v.nombre)).join(', ')}</td>
-        <td><button data-goto="${t.date}" title="Ver en la tabla de voluntarios">Ver ›</button></td></tr>`).join('')}</tbody></table></div>`;
+        <td><button data-goto="${t.date}" data-goto-task="${t.id}" title="Ver en la tabla de voluntarios">Ver ›</button></td></tr>`).join('')}</tbody></table></div>`;
   }).join('') : '<div class="empty">Esta persona no tiene tareas asignadas.</div>';
   $('#detail-dialog').showModal();
 }
@@ -561,7 +580,7 @@ function detailTasks(tasks, { showSpace, showCompanies }) {
       <td><b>${esc(t.name)}</b>${showCompanies && t.companies.length ? `<div>${t.companies.map((c) => `<span class="cotag">${esc(c.name)}</span>`).join('')}</div>` : ''}</td>
       <td class="num"><span class="fill ${cls}">${n}/${t.needed}</span></td>
       <td class="v">${t.volunteers.map((v) => esc(v.nombre)).join(', ')}</td>
-      <td><button data-goto="${t.date}" title="Ver en la tabla de voluntarios">Ver ›</button></td></tr>`;
+      <td><button data-goto="${t.date}" data-goto-task="${t.id}" title="Ver en la tabla de voluntarios">Ver ›</button></td></tr>`;
   }).join('')}</tbody></table></div>`;
 }
 
@@ -731,7 +750,7 @@ document.addEventListener('click', (e) => {
   else if (d.cand) run(openCandidates(+d.cand));
   else if (d.candAssign) { const [t, p, over] = d.candAssign.split(':').map(Number); run(api(`/api/tasks/${t}/volunteers`, 'POST', { person_id: p, accept_overtime: !!over })).finally(async () => { await loadTasks(); run(openCandidates(t)); }); }
   else if (d.cfxRm) { const [t, p] = d.cfxRm.split(':'); run(api(`/api/tasks/${t}/volunteers/${p}`, 'DELETE').then(loadTasks)); }
-  else if (d.goto) { $('#detail-dialog').close(); $('#conflicts-dialog').close(); showView('voluntarios'); selectDay(d.goto); }
+  else if (d.goto) { $('#detail-dialog').close(); $('#conflicts-dialog').close(); $('#assign-dialog').close(); showView('voluntarios'); run(goToTasks(d.goto, d.gotoTask)); }
 });
 document.addEventListener('change', (e) => {
   const s = e.target;
@@ -801,10 +820,10 @@ function renderConflicts() {
   const task = (x) => `<span class="tag ${x.area}">${esc(cfg.areas[x.area])}</span> <b>${esc(x.name ?? x.task_name)}</b>${x.space ? ` · ${esc(x.space)}` : ''}`;
   $('#conflicts-body').innerHTML =
     (un.length ? `<h4>Tareas sin cubrir (${un.length})</h4><div class="res-list"><table><thead><tr><th>Día</th><th>Hora</th><th>Tarea</th><th class="num">Faltan</th><th>Motivo</th><th></th></tr></thead><tbody>${un.map((u) =>
-      `<tr>${when(u)}<td>${task(u)}</td><td class="num">${u.missing}</td><td>${esc(u.reason)}</td><td style="white-space:nowrap"><button data-cand="${u.task_id}">+ Detalles</button> <button data-goto="${u.date}">Ver ›</button></td></tr>`).join('')}</tbody></table></div>` : '')
+      `<tr>${when(u)}<td>${task(u)}</td><td class="num">${u.missing}</td><td>${esc(u.reason)}</td><td style="white-space:nowrap"><button data-cand="${u.task_id}">+ Detalles</button> <button data-goto="${u.date}" data-goto-task="${u.task_id}">Ver ›</button></td></tr>`).join('')}</tbody></table></div>` : '')
     + (as.length ? `<h4>Asignaciones con problemas (${as.length})</h4><div class="res-list"><table><thead><tr><th>Día</th><th>Hora</th><th>Persona</th><th>Problema</th><th>Tarea</th><th></th></tr></thead><tbody>${as.map((c) =>
       `<tr>${when(c)}<td><b>${esc(c.nombre)}</b></td><td><span class="kind ${c.kind}">${KIND[c.kind]}</span> ${esc(c.message)}</td><td>${c.task_id ? task(c) : ''}</td>
-       <td style="white-space:nowrap"><button data-goto="${c.date}">Ver ›</button>${c.person_id ? ` <button data-cfx-rm="${c.task_id}:${c.person_id}" title="Quitar a esta persona de la tarea">Quitar</button>` : ''}</td></tr>`).join('')}</tbody></table></div>` : '');
+       <td style="white-space:nowrap"><button data-goto="${c.date}" data-goto-task="${(c.task_ids || [c.task_id]).filter(Boolean).join(',')}">Ver ›</button>${c.person_id ? ` <button data-cfx-rm="${c.task_id}:${c.person_id}" title="Quitar a esta persona de la tarea">Quitar</button>` : ''}</td></tr>`).join('')}</tbody></table></div>` : '');
 }
 $('#view-conflicts').onclick = () => { renderConflicts(); $('#conflicts-dialog').showModal(); };
 $('#conflicts-close').onclick = () => $('#conflicts-dialog').close();
