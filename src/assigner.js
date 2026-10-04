@@ -150,3 +150,31 @@ export function findConflicts() {
   }
   return out.sort(order);
 }
+
+// Quién podría cubrir una tarea (disponible ese día, del equipo y con la aptitud pedida) y qué le impide hacerlo ahora.
+export function candidatesFor(taskId) {
+  const t = db.prepare('SELECT * FROM tasks WHERE id = ?').get(taskId);
+  if (!t) return null;
+  const skillIds = db.prepare('SELECT skill_id FROM task_skills WHERE task_id = ?').all(taskId).map((r) => r.skill_id);
+  const skillNames = new Map(db.prepare('SELECT id, name FROM skills').all().map((s) => [s.id, s.name]));
+  const inTask = new Set(db.prepare('SELECT person_id FROM assignments WHERE task_id = ?').all(taskId).map((r) => r.person_id));
+  const mine = new Map();
+  for (const r of db.prepare('SELECT a.person_id, t.* FROM assignments a JOIN tasks t ON t.id = a.task_id WHERE t.date = ? AND t.id <> ?').all(t.date, taskId))
+    (mine.get(r.person_id) || mine.set(r.person_id, []).get(r.person_id)).push(r);
+  const dur = durMin(t), mineRange = range(t);
+  const brief = (o) => ({ task_id: o.id, name: o.name, start: o.start, end: o.end, area: o.area, space: o.space });
+  const candidates = loadPeople()
+    .filter((p) => p.av[t.date] === 1 && AREA_TEAMS[t.area].some((x) => p.teams.has(x)) && !inTask.has(p.id)
+      && (!skillIds.length || skillIds.some((s) => p.skills.has(s))))
+    .map((p) => {
+      const tasks = (mine.get(p.id) || []).sort(order);
+      const minutes = tasks.reduce((n, o) => n + durMin(o), 0);
+      const blockers = tasks.filter((o) => overlap(range(o), mineRange)).map(brief);
+      const over = minutes + dur > CAP;
+      return { id: p.id, nombre: p.nombre, teams: [...p.teams], skills: [...p.skills].filter((s) => skillIds.includes(s)).map((s) => skillNames.get(s)),
+        minutes, tasks: tasks.map(brief), blockers, over, status: blockers.length ? 'solape' : over ? 'tope' : 'libre' };
+    })
+    .sort((a, b) => ['libre', 'tope', 'solape'].indexOf(a.status) - ['libre', 'tope', 'solape'].indexOf(b.status) || a.minutes - b.minutes || a.nombre.localeCompare(b.nombre));
+  return { task: { ...t, assigned: inTask.size, missing: Math.max(0, t.needed - inTask.size), duration: dur,
+    skills: skillIds.map((s) => skillNames.get(s)) }, cap: CAP, candidates };
+}

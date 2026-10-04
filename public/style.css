@@ -160,3 +160,9 @@ tr.flash{animation:flash 1.6s}
 #conflicts-body table{font-size:12px}#conflicts-body td{white-space:normal}
 .kind{display:inline-block;font-size:10px;font-weight:700;padding:0 7px;border-radius:99px;color:#fff;background:var(--bad);white-space:nowrap}
 .kind.horas{background:#c2410c}.kind.solape{background:#7048e8}.kind.equipo{background:#0b7285}.kind.aptitud{background:#a06a00}.kind.ausente{background:#555}
+
+.cst{display:inline-block;font-size:11px;font-weight:700;padding:0 8px;border-radius:99px;color:#fff}
+.cst.libre{background:var(--ok)}.cst.tope{background:#c2410c}.cst.solape{background:#7048e8}
+.cand-note{font-size:13px;margin:0 0 10px;color:var(--mute)}
+.busy{display:block;font-size:12px;white-space:normal}
+#detail-body td{vertical-align:top}

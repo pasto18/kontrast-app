@@ -3,7 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { db, seedIfEmpty, sectoresDe } from './db.js';
 import { DAYS, AREAS, AREA_TEAMS, MAX_DAILY_MINUTES } from './config.js';
-import { autoAssign, workload, findConflicts, range, overlap, durMin } from './assigner.js';
+import { autoAssign, workload, findConflicts, candidatesFor, range, overlap, durMin } from './assigner.js';
 
 seedIfEmpty();
 const app = express();
@@ -280,6 +280,12 @@ app.get('/api/conflicts', (_req, res) => {
     ORDER BY t.date, t.start < '06:00', t.start`).all();
   const assignments = findConflicts();
   res.json({ unresolved, assignments, total: unresolved.length + assignments.length });
+});
+
+app.get('/api/tasks/:id/candidates', (req, res) => {
+  const r = candidatesFor(+req.params.id);
+  if (!r) return bad(res, 'Tarea no encontrada', 404);
+  res.json(r);
 });
 
 app.get('/api/workload', (_req, res) => res.json(workload()));
