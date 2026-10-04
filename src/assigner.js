@@ -69,9 +69,11 @@ export function autoAssign({ dates, areas, replace }) {
 
       const cts = tasks.filter((t) => areas.includes(t.area)).map((t) => ({
         t, dur: durMin(t), range: range(t), skills: taskSkills.get(t.id), who: assigned.get(t.id), missing: t.needed - assigned.get(t.id).size,
-        pool: people.filter((p) => p.av[date] === 1 && AREA_TEAMS[t.area].some((x) => p.teams.has(x))),
+        fullPool: people.filter((p) => p.av[date] === 1 && AREA_TEAMS[t.area].some((x) => p.teams.has(x))),
       })).filter((c) => c.missing > 0);
-      for (const c of cts) if (c.skills.length) c.pool = c.pool.filter((p) => c.skills.some((s) => p.skills.has(s)));
+      // pool = quién puede aportar una aptitud pedida; fullPool = cualquiera del equipo que esté ese día.
+      for (const c of cts) c.pool = c.skills.length ? c.fullPool.filter((p) => c.skills.some((s) => p.skills.has(s))) : c.fullPool;
+      const uncovered = (c) => { const have = new Set([...c.who].flatMap((pid) => [...byId.get(pid).skills])); return c.skills.filter((s) => !have.has(s)); };
 
       const eligible = (p, c) => !c.who.has(p.id) && (load.get(p.id) || 0) + c.dur <= CAP
         && !(busy.get(p.id) || []).some((r) => overlap(r, c.range));
@@ -82,23 +84,27 @@ export function autoAssign({ dates, areas, replace }) {
       };
       const lo = (p) => load.get(p.id) || 0;
 
-      // Fase 1: tareas con aptitudes (las más difíciles primero). Se intenta cubrir cada aptitud pedida.
+      // Fase 1: tareas con aptitudes (las más difíciles primero). Basta con que alguien de la tarea tenga cada
+      // aptitud pedida; el resto de voluntarios no necesita tenerla.
       const phase1 = cts.filter((c) => c.skills.length).sort((a, b) => a.pool.length - b.pool.length || a.range[0] - b.range[0]);
       for (const c of phase1) {
         while (c.missing > 0) {
-          const covered = new Set([...c.who].flatMap((pid) => [...byId.get(pid).skills]));
-          const score = (p) => c.skills.filter((s) => p.skills.has(s)).length + 10 * c.skills.filter((s) => p.skills.has(s) && !covered.has(s)).length;
-          const best = c.pool.filter((p) => eligible(p, c))
-            .sort((a, b) => score(b) - score(a) || balClass(a, c) - balClass(b, c) || gap(a, c) - gap(b, c) || lo(a) - lo(b) || a.id - b.id)[0];
+          const unc = uncovered(c);
+          if (!unc.length) break;
+          const n = (p) => unc.filter((s) => p.skills.has(s)).length;
+          const best = c.pool.filter((p) => eligible(p, c) && n(p) > 0)
+            .sort((a, b) => n(b) - n(a) || balClass(a, c) - balClass(b, c) || gap(a, c) - gap(b, c) || lo(a) - lo(b) || a.id - b.id)[0];
           if (!best) break;
           give(best, c);
         }
       }
-      // Fase 2: tareas sin aptitudes. Primero las que tienen menos gente posible; se reparte la carga.
-      const phase2 = cts.filter((c) => !c.skills.length).sort((a, b) => a.pool.length - b.pool.length || a.range[0] - b.range[0]);
+      // Fase 2: resto de huecos (tareas sin aptitudes, o con las aptitudes ya cubiertas) con cualquiera del equipo.
+      // Primero las que tienen menos gente posible; se reparte la carga y el balance Técnica / Bar-Cocina.
+      const fill = (c) => (c.skills.length ? c.fullPool : c.pool);
+      const phase2 = cts.filter((c) => c.missing > 0 && !uncovered(c).length).sort((a, b) => fill(a).length - fill(b).length || a.range[0] - b.range[0]);
       for (const c of phase2) {
         while (c.missing > 0) {
-          const best = c.pool.filter((p) => eligible(p, c))
+          const best = fill(c).filter((p) => eligible(p, c))
             .sort((a, b) => balClass(a, c) - balClass(b, c) || gap(a, c) - gap(b, c) || lo(a) - lo(b) || a.teams.size - b.teams.size || a.id - b.id)[0];
           if (!best) break;
           give(best, c);
@@ -107,11 +113,12 @@ export function autoAssign({ dates, areas, replace }) {
 
       for (const c of cts.filter((x) => x.missing > 0)) {
         let reason;
-        const inTeam = people.filter((p) => p.av[date] === 1 && AREA_TEAMS[c.t.area].some((x) => p.teams.has(x)) && !c.who.has(p.id));
+        const unc = uncovered(c), absent = fill(c).filter((p) => !c.who.has(p.id));
+        const cand = unc.length ? c.pool.filter((p) => unc.some((s) => p.skills.has(s)) && !c.who.has(p.id)) : absent;
         if (c.dur > CAP) reason = `dura más de ${CAP / 60} h`;
-        else if (!inTeam.length) reason = 'nadie del equipo disponible ese día';
-        else if (c.skills.length && !c.pool.length) reason = `nadie disponible con la aptitud (${c.skills.map((s) => skillNames.get(s)).join(', ')})`;
-        else if (c.pool.every((p) => (load.get(p.id) || 0) + c.dur > CAP)) reason = `quienes podrían ya llegarían al tope de ${CAP / 60} h`;
+        else if (!c.fullPool.length) reason = 'nadie del equipo disponible ese día';
+        else if (unc.length && !cand.length) reason = `nadie disponible con la aptitud (${unc.map((s) => skillNames.get(s)).join(', ')})`;
+        else if (cand.every((p) => (load.get(p.id) || 0) + c.dur > CAP)) reason = `quienes podrían ya llegarían al tope de ${CAP / 60} h`;
         else reason = 'los candidatos están en otra tarea a la misma hora';
         result.unresolved.push({ task_id: c.t.id, date, start: c.t.start, end: c.t.end, area: c.t.area, name: c.t.name, space: c.t.space, missing: c.missing, reason });
         result.unresolved_slots += c.missing;
@@ -153,12 +160,22 @@ export function findConflicts() {
     start: t.start, end: t.end, area: t.area, space: t.space, message });
   const byPersonDay = new Map();
   for (const r of rows) {
-    const p = people.get(r.person_id), need = taskSkills.get(r.id) || [];
+    const p = people.get(r.person_id);
     if (p.av[r.date] === 0) add('ausente', p, r, 'figura como ausente ese día');
     if (!AREA_TEAMS[r.area].some((x) => p.teams.has(x))) add('equipo', p, r, `no es del equipo de ${AREAS[r.area]}`);
-    if (need.length && !need.some((s) => p.skills.has(s))) add('aptitud', p, r, `no tiene la aptitud pedida (${need.map((s) => skillNames.get(s)).join(', ')})`);
     const k = `${r.person_id}|${r.date}`;
     (byPersonDay.get(k) || byPersonDay.set(k, []).get(k)).push(r);
+  }
+  // Aptitudes: basta con que una persona de la tarea tenga cada aptitud pedida.
+  const pending = new Set(db.prepare('SELECT u.task_id FROM assign_unresolved u JOIN tasks t ON t.id = u.task_id WHERE t.needed > (SELECT COUNT(*) FROM assignments a WHERE a.task_id = t.id)').all().map((r) => r.task_id));
+  const byTask = new Map();
+  for (const r of rows) (byTask.get(r.id) || byTask.set(r.id, []).get(r.id)).push(r);
+  for (const list of byTask.values()) {
+    const t = list[0], need = taskSkills.get(t.id) || [];
+    const lacking = need.filter((s) => !list.some((r) => people.get(r.person_id).skills.has(s)));
+    if (!lacking.length || pending.has(t.id)) continue;
+    out.push({ kind: 'aptitud', person_id: null, nombre: list.map((r) => people.get(r.person_id).nombre).join(', '), date: t.date, task_id: t.id, task_name: t.name,
+      start: t.start, end: t.end, area: t.area, space: t.space, message: `nadie de la tarea tiene la aptitud pedida (${lacking.map((s) => skillNames.get(s)).join(', ')})` });
   }
   for (const list of byPersonDay.values()) {
     const p = people.get(list[0].person_id);
@@ -188,19 +205,22 @@ export function candidatesFor(taskId) {
   for (const r of db.prepare('SELECT a.person_id, t.* FROM assignments a JOIN tasks t ON t.id = a.task_id WHERE t.date = ? AND t.id <> ?').all(t.date, taskId))
     (mine.get(r.person_id) || mine.set(r.person_id, []).get(r.person_id)).push(r);
   const dur = durMin(t), mineRange = range(t);
+  const peopleAll = loadPeople();
+  const have = new Set(peopleAll.filter((p) => inTask.has(p.id)).flatMap((p) => [...p.skills]));
+  const uncoveredIds = skillIds.filter((s) => !have.has(s)); // aptitudes que aún no aporta nadie de la tarea
   const brief = (o) => ({ task_id: o.id, name: o.name, start: o.start, end: o.end, area: o.area, space: o.space });
-  const candidates = loadPeople()
+  const candidates = peopleAll
     .filter((p) => p.av[t.date] === 1 && AREA_TEAMS[t.area].some((x) => p.teams.has(x)) && !inTask.has(p.id)
-      && (!skillIds.length || skillIds.some((s) => p.skills.has(s))))
+      && (!uncoveredIds.length || uncoveredIds.some((s) => p.skills.has(s))))
     .map((p) => {
       const tasks = (mine.get(p.id) || []).sort(order);
       const minutes = tasks.reduce((n, o) => n + durMin(o), 0);
       const blockers = tasks.filter((o) => overlap(range(o), mineRange)).map(brief);
       const over = minutes + dur > CAP;
-      return { id: p.id, nombre: p.nombre, teams: [...p.teams], skills: [...p.skills].filter((s) => skillIds.includes(s)).map((s) => skillNames.get(s)),
+      return { id: p.id, nombre: p.nombre, teams: [...p.teams], skills: [...p.skills].filter((s) => uncoveredIds.includes(s) || skillIds.includes(s)).map((s) => skillNames.get(s)),
         minutes, tasks: tasks.map(brief), blockers, over, status: blockers.length ? 'solape' : over ? 'tope' : 'libre' };
     })
     .sort((a, b) => ['libre', 'tope', 'solape'].indexOf(a.status) - ['libre', 'tope', 'solape'].indexOf(b.status) || a.minutes - b.minutes || a.nombre.localeCompare(b.nombre));
   return { task: { ...t, assigned: inTask.size, missing: Math.max(0, t.needed - inTask.size), duration: dur,
-    skills: skillIds.map((s) => skillNames.get(s)) }, cap: CAP, candidates };
+    skills: skillIds.map((s) => skillNames.get(s)), uncovered: uncoveredIds.map((s) => skillNames.get(s)) }, cap: CAP, candidates };
 }

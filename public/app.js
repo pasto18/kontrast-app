@@ -102,7 +102,8 @@ const skillName = (id) => skills.find((k) => k.id === id)?.name ?? id;
 function pickerOptions(t) {
   const assigned = new Set(t.volunteers.map((v) => v.id));
   const busyWith = (p) => tasks.find((o) => o.id !== t.id && overlaps(o, t) && o.volunteers.some((v) => v.id === p.id));
-  const need = t.skills.map((k) => k.id);
+  const have = new Set(t.volunteers.flatMap((v) => people.find((p) => p.id === v.id)?.skill_ids ?? []));
+  const need = t.skills.map((k) => k.id).filter((id) => !have.has(id)); // solo importan las aptitudes que aún nadie aporta
   const matched = (p) => need.filter((id) => p.skill_ids.includes(id));
   const opt = (p) => {
     const b = busyWith(p);
@@ -583,7 +584,7 @@ async function openCandidates(taskId) {
   $('#detail-sub').textContent = `${fmtDay(t.date)} · ${t.start}–${t.end} (${h(t.duration)} h) · ${cfg.areas[t.area]}${t.space ? ` · ${t.space}` : ''} · ${t.missing ? `faltan ${t.missing}` : 'ya está cubierta'}`;
   const busy = (o) => `<span class="busy"><span class="tag ${o.area}">${esc(cfg.areas[o.area])}</span> <b>${esc(o.name)}</b> ${o.start}–${o.end}${o.space ? ` · ${esc(o.space)}` : ''}</span>`;
   $('#detail-body').innerHTML = (r.candidates.length
-    ? `<p class="cand-note">Personas disponibles ese día, del equipo ${t.skills.length ? `y con la aptitud pedida (${esc(t.skills.join(', '))}) ` : ''}que aún no están en esta tarea.</p>
+    ? `<p class="cand-note">Personas disponibles ese día, del equipo ${t.uncovered.length ? `y con la aptitud que falta (${esc(t.uncovered.join(', '))}) ` : ''}que aún no están en esta tarea.${t.skills.length && !t.uncovered.length ? ' La aptitud pedida ya la aporta alguien de la tarea.' : ''}</p>
       <div class="table-wrap"><table><thead><tr><th>Persona</th><th>Estado</th><th>Qué hace ese día</th><th class="num">Horas</th><th></th></tr></thead><tbody>${r.candidates.map((c) => `<tr>
         <td><b>${esc(c.nombre)}</b><div>${c.teams.map((x) => `<span class="eq">${esc(x)}</span>`).join('')}${c.skills.map((x) => `<span class="apt">${esc(x)}</span>`).join('')}</div></td>
         <td><span class="cst ${c.status}">${{ libre: 'Libre', solape: 'Ocupada/o a esa hora', tope: `Pasaría de ${h(r.cap)} h` }[c.status]}</span>${c.status === 'solape' && c.over ? `<div class="hint">y además pasaría de ${h(r.cap)} h</div>` : ''}</td>
@@ -606,7 +607,7 @@ function renderConflicts() {
       `<tr>${when(u)}<td>${task(u)}</td><td class="num">${u.missing}</td><td>${esc(u.reason)}</td><td style="white-space:nowrap"><button data-cand="${u.task_id}">Candidatos</button> <button data-goto="${u.date}">Ver ›</button></td></tr>`).join('')}</tbody></table></div>` : '')
     + (as.length ? `<h4>Asignaciones con problemas (${as.length})</h4><div class="res-list"><table><thead><tr><th>Día</th><th>Hora</th><th>Persona</th><th>Problema</th><th>Tarea</th><th></th></tr></thead><tbody>${as.map((c) =>
       `<tr>${when(c)}<td><b>${esc(c.nombre)}</b></td><td><span class="kind ${c.kind}">${KIND[c.kind]}</span> ${esc(c.message)}</td><td>${c.task_id ? task(c) : ''}</td>
-       <td style="white-space:nowrap"><button data-goto="${c.date}">Ver ›</button>${c.task_id ? ` <button data-cfx-rm="${c.task_id}:${c.person_id}" title="Quitar a esta persona de la tarea">Quitar</button>` : ''}</td></tr>`).join('')}</tbody></table></div>` : '');
+       <td style="white-space:nowrap"><button data-goto="${c.date}">Ver ›</button>${c.person_id ? ` <button data-cfx-rm="${c.task_id}:${c.person_id}" title="Quitar a esta persona de la tarea">Quitar</button>` : ''}</td></tr>`).join('')}</tbody></table></div>` : '');
 }
 $('#view-conflicts').onclick = () => { renderConflicts(); $('#conflicts-dialog').showModal(); };
 $('#conflicts-close').onclick = () => $('#conflicts-dialog').close();
