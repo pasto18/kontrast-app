@@ -69,3 +69,27 @@ dialog h2{margin:0 0 12px}
 .actions{display:flex;justify-content:flex-end;gap:8px;margin-top:14px}
 .error{color:var(--bad);min-height:1em;margin:8px 0 0}
 #toast{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:8px 14px;border-radius:8px;z-index:20}
+
+.fill.f3{background:var(--bg);color:var(--mute)}
+.cotag{display:inline-block;font-size:11px;color:var(--mute);margin-top:2px;margin-right:6px}
+.cotag::before{content:"★ "}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
+.card{text-align:left;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:6px;white-space:normal}
+.card:hover{border-color:var(--accent);transform:translateY(-1px)}
+.card h3{margin:0;font-size:16px;line-height:1.25}
+.card .meta{color:var(--mute);font-size:12px}
+.card .foot{margin-top:auto;display:flex;justify-content:space-between;align-items:center;font-size:12px;color:var(--mute);padding-top:4px}
+.card .n{font-weight:700;color:var(--ink);background:var(--bg);border-radius:99px;padding:1px 9px}
+.card .n.zero{color:var(--mute);font-weight:400}
+.disc{display:inline-block;font-size:10px;font-weight:700;padding:1px 7px;border-radius:99px;background:var(--bg);border:1px solid var(--line);margin-right:3px}
+#detail-dialog{width:min(980px,96vw);max-height:90vh}
+.detail-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:10px}
+.detail-head h2{margin:0}.sub{color:var(--mute);font-size:13px;margin-top:2px}
+#detail-body h4{margin:14px 0 6px;font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--mute)}
+#detail-body table{font-size:13px}
+#detail-body td.v{white-space:normal;max-width:260px}
+.lab{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--mute)}
+.chips-in{display:flex;flex-wrap:wrap;gap:4px}
+.chips-in span{display:inline-flex;gap:4px;align-items:center;background:var(--bg);border:1px solid var(--line);border-radius:99px;padding:1px 4px 1px 9px;color:var(--ink);font-size:13px}
+.chips-in button{border:0;background:none;padding:0 4px;color:var(--mute)}
+.card .foot span:first-child{flex:1;min-width:0;padding-right:8px}.card .n{white-space:nowrap}

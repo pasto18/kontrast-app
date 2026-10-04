@@ -21,15 +21,48 @@ app.get('/api/people', (_req, res) => {
   res.json(people.map((p) => ({ ...p, av: av.get(p.id) })));
 });
 
+const ORDER = `ORDER BY date, start < '06:00', start, end, id`;
+
+// Añade voluntarios y compañías a cada tarea.
+function withRelations(tasks) {
+  if (!tasks.length) return tasks;
+  const ids = tasks.map((t) => t.id), ph = ids.map(() => '?').join(',');
+  const by = new Map(tasks.map((t) => [t.id, { ...t, volunteers: [], companies: [] }]));
+  for (const v of db.prepare(`SELECT a.task_id, p.id, p.nombre FROM assignments a JOIN people p ON p.id = a.person_id
+    WHERE a.task_id IN (${ph}) ORDER BY p.nombre`).all(...ids)) by.get(v.task_id).volunteers.push({ id: v.id, nombre: v.nombre });
+  for (const c of db.prepare(`SELECT tc.task_id, c.id, c.name FROM task_companies tc JOIN companies c ON c.id = tc.company_id
+    WHERE tc.task_id IN (${ph}) ORDER BY c.name`).all(...ids)) by.get(c.task_id).companies.push({ id: c.id, name: c.name });
+  return tasks.map((t) => by.get(t.id));
+}
+
 app.get('/api/tasks', (req, res) => {
   const { date } = req.query;
   if (!DAYS.some((d) => d.date === date)) return bad(res, 'Fecha fuera del festival');
-  const tasks = db.prepare(`SELECT * FROM tasks WHERE date = ? ORDER BY start < '06:00', start, end, id`).all(date);
-  const vols = db.prepare(`SELECT a.task_id, p.id, p.nombre FROM assignments a JOIN people p ON p.id = a.person_id
-    JOIN tasks t ON t.id = a.task_id WHERE t.date = ? ORDER BY p.nombre`).all(date);
-  const by = new Map(tasks.map((t) => [t.id, []]));
-  for (const v of vols) by.get(v.task_id).push({ id: v.id, nombre: v.nombre });
-  res.json(tasks.map((t) => ({ ...t, volunteers: by.get(t.id) })));
+  res.json(withRelations(db.prepare(`SELECT * FROM tasks WHERE date = ? ${ORDER}`).all(date)));
+});
+
+const byName = (a, b) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base' });
+
+app.get('/api/companies', (_req, res) => {
+  const shows = db.prepare('SELECT * FROM shows ORDER BY date, time').all();
+  const counts = new Map(db.prepare('SELECT company_id, COUNT(*) n FROM task_companies GROUP BY company_id').all().map((r) => [r.company_id, r.n]));
+  res.json(db.prepare('SELECT * FROM companies').all().map((c) => ({
+    ...c, task_count: counts.get(c.id) || 0, shows: shows.filter((s) => s.company_id === c.id),
+  })).sort(byName));
+});
+
+app.get('/api/companies/:id/tasks', (req, res) => {
+  res.json(withRelations(db.prepare(`SELECT t.* FROM tasks t JOIN task_companies tc ON tc.task_id = t.id
+    WHERE tc.company_id = ? ${ORDER.replace(/(date|start|end|id)\b/g, 't.$1')}`).all(+req.params.id)));
+});
+
+app.get('/api/spaces', (_req, res) => {
+  res.json(db.prepare(`SELECT space AS name, COUNT(*) task_count, GROUP_CONCAT(DISTINCT area) areas, MIN(date) first_date, MAX(date) last_date
+    FROM tasks WHERE space <> '' GROUP BY space`).all().sort(byName).map((r) => ({ ...r, areas: r.areas.split(',') })));
+});
+
+app.get('/api/spaces/tasks', (req, res) => {
+  res.json(withRelations(db.prepare(`SELECT * FROM tasks WHERE space = ? ${ORDER}`).all(String(req.query.name ?? ''))));
 });
 
 function readTask(body) {
@@ -43,18 +76,26 @@ function readTask(body) {
   if (t.end === t.start) return { error: 'La hora final no puede coincidir con la de inicio' };
   if (!AREAS[t.area]) return { error: 'Área inválida' };
   if (!t.name) return { error: 'La tarea necesita un nombre' };
-  if (!Number.isInteger(t.needed) || t.needed < 1 || t.needed > 99) return { error: 'Voluntarios necesarios: entero entre 1 y 99' };
-  return { t };
+  if (!Number.isInteger(t.needed) || t.needed < 0 || t.needed > 99) return { error: 'Voluntarios necesarios: entero entre 0 y 99' };
+  const ids = [...new Set((Array.isArray(body.company_ids) ? body.company_ids : []).map(Number))];
+  if (ids.some((id) => !db.prepare('SELECT 1 FROM companies WHERE id = ?').get(id))) return { error: 'Compañía no encontrada' };
+  return { t, ids };
+}
+
+function setCompanies(taskId, ids) {
+  db.prepare('DELETE FROM task_companies WHERE task_id = ?').run(taskId);
+  const ins = db.prepare('INSERT INTO task_companies (task_id, company_id) VALUES (?,?)');
+  for (const id of ids) ins.run(taskId, id);
 }
 
 app.post('/api/tasks', (req, res) => {
-  const { t, error } = readTask(req.body);
+  const { t, ids, error } = readTask(req.body);
   if (error) return bad(res, error);
   const dates = req.body.repeatAllDays ? DAYS.map((d) => d.date) : [t.date];
   const ins = db.prepare('INSERT INTO tasks (date, start, end, area, space, name, needed, responsible) VALUES (?,?,?,?,?,?,?,?)');
   db.exec('BEGIN');
   try {
-    for (const date of dates) ins.run(date, t.start, t.end, t.area, t.space, t.name, t.needed, t.responsible);
+    for (const date of dates) setCompanies(ins.run(date, t.start, t.end, t.area, t.space, t.name, t.needed, t.responsible).lastInsertRowid, ids);
     db.exec('COMMIT');
   } catch (e) { db.exec('ROLLBACK'); throw e; }
   res.status(201).json({ created: dates.length });
@@ -63,12 +104,13 @@ app.post('/api/tasks', (req, res) => {
 app.put('/api/tasks/:id', (req, res) => {
   const id = +req.params.id;
   if (!db.prepare('SELECT 1 FROM tasks WHERE id = ?').get(id)) return bad(res, 'Tarea no encontrada', 404);
-  const { t, error } = readTask(req.body);
+  const { t, ids, error } = readTask(req.body);
   if (error) return bad(res, error);
   const n = db.prepare('SELECT COUNT(*) n FROM assignments WHERE task_id = ?').get(id).n;
   if (t.needed < n) return bad(res, `Ya hay ${n} voluntarios asignados; quita alguno antes de bajar la cantidad`, 409);
   db.prepare('UPDATE tasks SET date=?, start=?, end=?, area=?, space=?, name=?, needed=?, responsible=? WHERE id=?')
     .run(t.date, t.start, t.end, t.area, t.space, t.name, t.needed, t.responsible, id);
+  setCompanies(id, ids);
   res.json({ ok: true });
 });
 

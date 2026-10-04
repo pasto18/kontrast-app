@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DAYS, COCINA_FIJAS, FESTIVAL_YEAR } from './config.js';
+import { PROGRAMA, REGLAS_TAREAS } from './programa.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const DB_PATH = process.env.DB_PATH || path.join(root, 'data', 'kontrast.db');
@@ -40,6 +41,24 @@ CREATE TABLE IF NOT EXISTS tasks (
   responsible TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS tasks_date ON tasks(date, start);
+CREATE TABLE IF NOT EXISTS companies (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE
+);
+CREATE TABLE IF NOT EXISTS shows (
+  id INTEGER PRIMARY KEY,
+  company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+  obra TEXT NOT NULL,
+  date TEXT NOT NULL,
+  time TEXT NOT NULL,
+  discipline TEXT NOT NULL DEFAULT '',
+  venue TEXT NOT NULL DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS task_companies (
+  task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+  PRIMARY KEY (task_id, company_id)
+);
 CREATE TABLE IF NOT EXISTS assignments (
   task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
   person_id INTEGER NOT NULL REFERENCES people(id) ON DELETE CASCADE,
@@ -132,6 +151,57 @@ function seedBar() {
   }
 }
 
+// Tareas de Técnica (dos hojas). Se ignoran las asignaciones de técnicos y voluntarios;
+// se conserva el responsable. Las fechas fuera del festival (lunes 20) se omiten.
+function seedTecnica() {
+  const ins = db.prepare('INSERT INTO tasks (date, start, end, area, space, name, needed, responsible) VALUES (?,?,?,?,?,?,?,?)');
+  for (const file of ['tecnica_1a.csv', 'tecnica_2a.csv']) {
+    const lines = fs.readFileSync(path.join(root, 'data', 'seed', file), 'utf8').split(/\r?\n/).filter((l) => l.trim());
+    const h = parseCsvLine(lines[0]).map((x) => x.trim());
+    const col = (n) => h.indexOf(n);
+    const [cDia, cIni, cFin, cDur, cEsp, cResp, cTarea, cVol] =
+      ['Dia', 'Hora inicio', 'Hora final', 'Duración', 'Espacio', 'Responsable', 'Tarea', 'Nº voluntarios'].map(col);
+    let skipped = 0;
+    for (const line of lines.slice(1)) {
+      const c = parseCsvLine(line);
+      if (!c[cDia]?.trim()) continue; // fila vacía
+      const day = DAYS.find((d) => d.day === +c[cDia].split('-')[1]);
+      const start = normTime(c[cIni]);
+      const name = (c[cTarea] || '').trim();
+      if (!day || !start || !name) { skipped++; continue; }
+      let end = normTime(c[cFin]);
+      if (!end) { // final ausente ("-" o vacío): inicio + duración
+        const dur = Math.round(parseFloat((c[cDur] || '').replace(',', '.')) * 60);
+        const m = (+start.slice(0, 2) * 60 + +start.slice(3) + dur) % 1440;
+        end = `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+      }
+      if (end === start) { skipped++; continue; }
+      ins.run(day.date, start, end, 'tecnica', (c[cEsp] || '').trim(), name, Math.max(0, parseInt(c[cVol], 10) || 0), (c[cResp] || '').trim());
+    }
+    if (skipped) console.warn(`Técnica (${file}): ${skipped} filas omitidas (fuera del festival o sin tarea/hora)`);
+  }
+}
+
+const norm = (s) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+export function suggestCompanies(taskName) {
+  const n = norm(taskName);
+  return REGLAS_TAREAS.filter(([re]) => re.test(n)).map(([, name]) => name);
+}
+
+function seedCompanias() {
+  const insC = db.prepare('INSERT OR IGNORE INTO companies (name) VALUES (?)');
+  const getC = db.prepare('SELECT id FROM companies WHERE name = ?');
+  const insS = db.prepare('INSERT INTO shows (company_id, obra, date, time, discipline, venue) VALUES (?,?,?,?,?,?)');
+  for (const [date, time, obra, company, disc, venue] of PROGRAMA) {
+    const name = company || obra;
+    insC.run(name);
+    insS.run(getC.get(name).id, obra, date, time, disc, venue);
+  }
+  const link = db.prepare('INSERT OR IGNORE INTO task_companies (task_id, company_id) VALUES (?,?)');
+  for (const t of db.prepare("SELECT id, name FROM tasks WHERE area = 'tecnica'").all())
+    for (const name of suggestCompanies(t.name)) link.run(t.id, getC.get(name).id);
+}
+
 // Cada carga inicial se aplica una sola vez (así borrar tareas no las hace reaparecer).
 db.exec('CREATE TABLE IF NOT EXISTS seeds (name TEXT PRIMARY KEY)');
 function applySeed(name, fn) {
@@ -148,4 +218,6 @@ export function seedIfEmpty() {
   const hadTasks = db.prepare('SELECT COUNT(*) n FROM tasks').get().n > 0;
   applySeed('cocina-v1', () => { if (!hadTasks) seedCocina(); });
   applySeed('bar-v1', seedBar);
+  applySeed('tecnica-v1', seedTecnica);
+  applySeed('companias-v1', seedCompanias);
 }

@@ -17,6 +17,8 @@ let selDay = null, view = store.get('view', 'voluntarios');
 let areas = new Set(store.get('areas', ['cocina', 'bar', 'tecnica']));
 let peopleTeams = new Set(store.get('peopleTeams', []));
 let editingId = null;
+let companies = [], spaces = [], dlgCompanies = [];
+const VIEWS = ['voluntarios', 'personas', 'companias', 'espacios'];
 let showOtherTeams = store.get('showOtherTeams', false);
 
 // ---------- Reloj simulado (hora "naive": se trata todo como UTC) ----------
@@ -115,12 +117,12 @@ function renderTasks() {
   if (!rows.length) { $('#tasks-table').innerHTML = head + `<tbody><tr><td colspan="11" class="empty">No hay tareas para este día con los filtros actuales.</td></tr></tbody>`; return; }
   $('#tasks-table').innerHTML = head + '<tbody>' + rows.map((t) => {
     const st = taskStatus(t), n = t.volunteers.length;
-    const cls = n === 0 ? 'f0' : n < t.needed ? 'f1' : 'f2';
+    const cls = t.needed === 0 ? 'f3' : n === 0 ? 'f0' : n < t.needed ? 'f1' : 'f2';
     return `<tr class="${st === 'future' ? '' : st}">
       <td>${t.start}${st === 'now' ? '<span class="badge live">EN CURSO</span>' : ''}</td><td>${t.end}</td>
       <td class="num">${fmtDur(t)}</td>
       <td><span class="tag ${t.area}">${esc(cfg.areas[t.area])}</span></td>
-      <td>${esc(t.space)}</td><td><b>${esc(t.name)}</b></td>
+      <td>${esc(t.space)}</td><td><b>${esc(t.name)}</b>${t.companies.length ? `<div>${t.companies.map((c) => `<span class="cotag">${esc(c.name)}</span>`).join("")}</div>` : ""}</td>
       <td class="num nec">${t.needed}</td><td>${esc(t.responsible)}</td>
       <td class="est"><span class="fill ${cls}">${n}/${t.needed}</span></td>
       <td><div class="slots">${slots(t)}</div></td>
@@ -166,18 +168,95 @@ function renderPeople() {
 function showView(v) {
   view = v; store.set('view', v);
   document.querySelectorAll('.tabs button').forEach((b) => b.classList.toggle('active', b.dataset.view === v));
-  $('#view-voluntarios').hidden = v !== 'voluntarios';
-  $('#view-personas').hidden = v !== 'personas';
-  if (v === 'personas') renderPeople(); else renderTasks();
+  for (const k of VIEWS) $(`#view-${k}`).hidden = k !== v;
+  if (v === 'personas') renderPeople();
+  else if (v === 'voluntarios') renderTasks();
+  else run(refreshCatalog().then(v === 'companias' ? renderCompanies : renderSpaces));
+}
+
+// ---------- Compañías y espacios ----------
+async function refreshCatalog() {
+  [companies, spaces] = await Promise.all([api('/api/companies'), api('/api/spaces')]);
+  $('#space-names').innerHTML = spaces.map((x) => `<option value="${esc(x.name)}">`).join('');
+}
+const fmtDay = (date) => cfg.days.find((d) => d.date === date)?.label ?? date;
+const norm = (x) => x.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+const nTasks = (n) => `<span class="n ${n ? '' : 'zero'}">${n} ${n === 1 ? 'tarea' : 'tareas'}</span>`;
+
+function renderCompanies() {
+  const q = norm($('#companies-search').value.trim());
+  const list = companies.filter((c) => !q || norm(c.name).includes(q) || c.shows.some((s) => norm(s.obra).includes(q)));
+  $('#companies-count').textContent = `${list.length} de ${companies.length}`;
+  $('#companies-cards').innerHTML = list.map((c) => {
+    const obras = [...new Set(c.shows.map((s) => s.obra))];
+    const discs = [...new Set(c.shows.map((s) => s.discipline))];
+    return `<button class="card" data-company="${c.id}">
+      <h3>${esc(c.name)}</h3>
+      <div>${discs.map((d) => `<span class="disc">${esc(d)}</span>`).join('')}</div>
+      ${obras.length && !(obras.length === 1 && obras[0] === c.name) ? `<div class="meta">${obras.map(esc).join(' · ')}</div>` : ''}
+      <div class="foot"><span>${[...new Set(c.shows.map((s) => +s.date.slice(8)))].join(', ')} abr</span>${nTasks(c.task_count)}</div></button>`;
+  }).join('') || '<div class="empty">Sin resultados</div>';
+}
+
+function renderSpaces() {
+  const q = norm($('#spaces-search').value.trim());
+  const list = spaces.filter((x) => !q || norm(x.name).includes(q));
+  $('#spaces-count').textContent = `${list.length} de ${spaces.length}`;
+  $('#spaces-cards').innerHTML = list.map((x) => `<button class="card" data-space="${esc(x.name)}">
+    <h3>${esc(x.name)}</h3>
+    <div>${x.areas.map((a) => `<span class="tag ${a}">${esc(cfg.areas[a])}</span>`).join(' ')}</div>
+    <div class="foot"><span>${x.first_date === x.last_date ? fmtDay(x.first_date) : `${fmtDay(x.first_date)} → ${fmtDay(x.last_date)}`}</span>${nTasks(x.task_count)}</div></button>`).join('')
+    || '<div class="empty">Sin resultados</div>';
+}
+
+function detailTasks(tasks, { showSpace, showCompanies }) {
+  if (!tasks.length) return '<div class="empty">Todavía no hay tareas asignadas.</div>';
+  return `<div class="table-wrap"><table><thead><tr><th>Día</th><th>Hora</th><th>Área</th>${showSpace ? '<th>Espacio</th>' : ''}<th>Tarea</th>
+    <th class="num">Cubierto</th><th>Voluntarios</th><th></th></tr></thead><tbody>${tasks.map((t) => {
+    const n = t.volunteers.length, cls = t.needed === 0 ? 'f3' : n === 0 ? 'f0' : n < t.needed ? 'f1' : 'f2';
+    return `<tr><td>${fmtDay(t.date)}</td><td>${t.start}–${t.end}</td><td><span class="tag ${t.area}">${esc(cfg.areas[t.area])}</span></td>
+      ${showSpace ? `<td>${esc(t.space)}</td>` : ''}
+      <td><b>${esc(t.name)}</b>${showCompanies && t.companies.length ? `<div>${t.companies.map((c) => `<span class="cotag">${esc(c.name)}</span>`).join('')}</div>` : ''}</td>
+      <td class="num"><span class="fill ${cls}">${n}/${t.needed}</span></td>
+      <td class="v">${t.volunteers.map((v) => esc(v.nombre)).join(', ')}</td>
+      <td><button data-goto="${t.date}" title="Ver en la tabla de voluntarios">Ver ›</button></td></tr>`;
+  }).join('')}</tbody></table></div>`;
+}
+
+async function openDetail(kind, key) {
+  let title, sub = '', body;
+  if (kind === 'company') {
+    const c = companies.find((x) => x.id === +key);
+    const tasks = await api(`/api/companies/${c.id}/tasks`);
+    title = c.name;
+    sub = [...new Set(c.shows.map((s) => s.discipline))].join(' · ');
+    body = `<h4>Programa</h4><table><tbody>${c.shows.map((s) => `<tr><td>${fmtDay(s.date)}</td><td>${s.time}</td><td><b>${esc(s.obra)}</b></td><td>${esc(s.venue)}</td></tr>`).join('')}</tbody></table>
+      <h4>Tareas (${tasks.length})</h4>${detailTasks(tasks, { showSpace: true, showCompanies: false })}`;
+  } else {
+    const tasks = await api(`/api/spaces/tasks?name=${encodeURIComponent(key)}`);
+    title = key; sub = `${tasks.length} tareas`;
+    body = detailTasks(tasks, { showSpace: false, showCompanies: true });
+  }
+  $('#detail-title').textContent = title; $('#detail-sub').textContent = sub; $('#detail-body').innerHTML = body;
+  $('#detail-dialog').showModal();
 }
 
 // ---------- Diálogo de tarea ----------
+function renderDlgCompanies() {
+  const name = (id) => companies.find((c) => c.id === id)?.name ?? id;
+  $('#task-companies').innerHTML = dlgCompanies.map((id) => `<span>${esc(name(id))}<button type="button" data-co-rm="${id}" title="Quitar">×</button></span>`).join('') || '<span style="color:var(--mute)">Sin compañía</span>';
+  $('#task-company-add').innerHTML = '<option value="">+ Vincular compañía…</option>' + companies.filter((c) => !dlgCompanies.includes(c.id))
+    .map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join('');
+}
+
 const dlg = $('#task-dialog'), form = $('#task-form');
 function openTask(t) {
   editingId = t ? t.id : null;
   $('#task-dialog-title').textContent = t ? 'Editar tarea' : 'Nueva tarea';
   $('#repeat-wrap').hidden = !!t;
   $('#task-error').textContent = '';
+  dlgCompanies = t ? t.companies.map((c) => c.id) : [];
+  renderDlgCompanies();
   const v = t || { area: [...areas][0] || 'cocina', date: selDay, start: '', end: '', name: '', space: '', needed: 1, responsible: '' };
   for (const k of ['area', 'date', 'start', 'end', 'name', 'space', 'needed', 'responsible']) form.elements[k].value = v[k];
   form.elements.repeatAllDays.checked = false;
@@ -187,6 +266,7 @@ form.addEventListener('submit', async (e) => {
   e.preventDefault();
   const body = Object.fromEntries(new FormData(form));
   body.repeatAllDays = form.elements.repeatAllDays.checked;
+  body.company_ids = dlgCompanies;
   try {
     if (editingId) await api(`/api/tasks/${editingId}`, 'PUT', body); else await api('/api/tasks', 'POST', body);
     dlg.close();
@@ -207,12 +287,20 @@ document.addEventListener('click', (e) => {
   else if (d.edit) openTask(tasks.find((t) => t.id === +d.edit));
   else if (d.del) { const t = tasks.find((x) => x.id === +d.del); if (confirm(`¿Eliminar "${t.name}" (${t.start}–${t.end})? Se perderán sus voluntarios asignados.`)) run(api(`/api/tasks/${t.id}`, 'DELETE').then(loadTasks)); }
   else if (d.clock) setClock(clockMs + d.clock * 60000);
+  else if (d.company) run(openDetail('company', d.company));
+  else if (d.space) run(openDetail('space', d.space));
+  else if (d.coRm) { dlgCompanies = dlgCompanies.filter((id) => id !== +d.coRm); renderDlgCompanies(); }
+  else if (d.goto) { $('#detail-dialog').close(); showView('voluntarios'); selectDay(d.goto); }
 });
 document.addEventListener('change', (e) => {
   const s = e.target;
+  if (s.id === 'task-company-add' && s.value) { dlgCompanies.push(+s.value); renderDlgCompanies(); return; }
   if (s.dataset.add && s.value) run(api(`/api/tasks/${s.dataset.add}/volunteers`, 'POST', { person_id: +s.value })).finally(loadTasks);
 });
 $('#others-toggle').onclick = () => { showOtherTeams = !showOtherTeams; store.set('showOtherTeams', showOtherTeams); renderOthersToggle(); renderTasks(); };
+$('#detail-close').onclick = () => $('#detail-dialog').close();
+$('#companies-search').oninput = renderCompanies;
+$('#spaces-search').oninput = renderSpaces;
 $('#add-task').onclick = () => openTask(null);
 $('#people-search').oninput = renderPeople;
 $('#clock-play').onclick = () => setPlaying(!playing);
@@ -222,6 +310,7 @@ $('#clock-input').onchange = (e) => { const ms = Date.parse(e.target.value + ':0
 // ---------- Arranque ----------
 (async () => {
   [cfg, people] = await Promise.all([api('/api/config'), api('/api/people')]);
+  await refreshCatalog();
   const fill = (sel, items) => { sel.innerHTML = items.map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join(''); };
   fill(form.elements.area, Object.entries(cfg.areas));
   fill(form.elements.date, cfg.days.map((d) => [d.date, d.label]));
@@ -231,5 +320,5 @@ $('#clock-input').onchange = (e) => { const ms = Date.parse(e.target.value + ':0
   const saved = store.get('day', null);
   const start = cfg.days.some((d) => d.date === clockDate()) ? clockDate() : saved && cfg.days.some((d) => d.date === saved) ? saved : cfg.days[0].date;
   await selectDay(start);
-  showView(view);
+  showView(VIEWS.includes(view) ? view : 'voluntarios');
 })().catch((e) => toast(e.message));

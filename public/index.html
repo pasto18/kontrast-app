@@ -12,6 +12,8 @@
   <nav class="tabs">
     <button data-view="voluntarios" class="active">Voluntarios</button>
     <button data-view="personas">Personas</button>
+    <button data-view="companias">Compañías</button>
+    <button data-view="espacios">Espacios</button>
   </nav>
   <div class="clock" title="Reloj simulado para probar distintos momentos del festival">
     <span class="clock-label">🕒 Reloj simulado</span>
@@ -51,6 +53,16 @@
     </div>
     <div class="table-wrap"><table id="people-table"></table></div>
   </section>
+
+  <section id="view-companias" hidden>
+    <div class="toolbar"><input type="search" id="companies-search" placeholder="Buscar compañía u obra…"><span class="legend" id="companies-count"></span></div>
+    <div id="companies-cards" class="cards"></div>
+  </section>
+
+  <section id="view-espacios" hidden>
+    <div class="toolbar"><input type="search" id="spaces-search" placeholder="Buscar espacio…"><span class="legend" id="spaces-count"></span></div>
+    <div id="spaces-cards" class="cards"></div>
+  </section>
 </main>
 
 <dialog id="task-dialog">
@@ -62,9 +74,13 @@
       <label>Inicio <input type="time" name="start" required></label>
       <label>Fin <input type="time" name="end" required></label>
       <label class="wide">Tarea <input name="name" required maxlength="80"></label>
-      <label>Espacio <input name="space" maxlength="60"></label>
-      <label>Voluntarios necesarios <input type="number" name="needed" min="1" max="99" value="1" required></label>
+      <label>Espacio <input name="space" list="space-names" maxlength="60"></label>
+      <label>Voluntarios necesarios <input type="number" name="needed" min="0" max="99" value="1" required></label>
       <label class="wide">Responsable <input name="responsible" list="people-names" maxlength="80"></label>
+      <div class="wide lab">Compañías
+        <div id="task-companies" class="chips-in"></div>
+        <select id="task-company-add"></select>
+      </div>
       <label class="wide check" id="repeat-wrap"><input type="checkbox" name="repeatAllDays"> Repetir todos los días del festival</label>
     </div>
     <p class="error" id="task-error"></p>
@@ -75,6 +91,11 @@
   </form>
 </dialog>
 <datalist id="people-names"></datalist>
+<datalist id="space-names"></datalist>
+<dialog id="detail-dialog">
+  <div class="detail-head"><div><h2 id="detail-title"></h2><div id="detail-sub" class="sub"></div></div><button id="detail-close" title="Cerrar">✕</button></div>
+  <div id="detail-body"></div>
+</dialog>
 <div id="toast" hidden></div>
 <script src="app.js"></script>
 </body>
