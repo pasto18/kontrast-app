@@ -280,14 +280,15 @@ function daySquare(p, d) {
 async function refreshWorkload() { const r = await api('/api/workload'); workload = r.days; groupHours = r.groups; }
 
 // Balance: solo para quien está en Técnica y en alguno de Bar/Cuina/Neteja. Su tiempo debería repartirse mitad y mitad.
+const GRUPO_CORTO = { VOLUNTARIAS: 'VOL', CASA: 'K' };
 const CB_TEAMS = ['CUINA', 'NETEJA', 'BAR'];
 function balanceCell(p) {
   const t = teamsOf(p);
   if (!(t.includes('TÉCNICA') && t.some((x) => CB_TEAMS.includes(x)))) return '';
   const g = groupHours[p.id] || { cb: 0, t: 0 }, diff = g.t - g.cb;
-  const lead = diff > 0 ? ['t', 'Técnica'] : ['cb', 'Bar/Cocina'];
-  return `<span class="bal cb" title="Horas en Bar / Cocina / Limpieza">B/C ${fmtH(g.cb) || 0}</span><span class="bal t" title="Horas en Técnica">T ${fmtH(g.t) || 0}</span>`
-    + (diff === 0 ? (g.cb ? '<span class="baldiff">=</span>' : '') : `<span class="baldiff ${lead[0]}">${lead[1]} +${fmtH(Math.abs(diff))} h</span>`);
+  const tip = `Técnica ${fmtH(g.t) || 0} h · Bar/Cocina/Limpieza ${fmtH(g.cb) || 0} h`;
+  if (diff === 0) return g.cb ? `<span class="baldiff" title="${tip}">=</span>` : '';
+  return `<span class="bal ${diff > 0 ? 't' : 'cb'}" title="${tip}">${diff > 0 ? 'T' : 'B/C'} +${fmtH(Math.abs(diff))}</span>`;
 }
 
 // Promedio de horas por día de estadía, contando solo los días ya transcurridos (hasta hoy, según el reloj) en los que está.
@@ -308,16 +309,16 @@ function renderPeople() {
   if (peopleSort !== 'none') list.sort((a, b) => (peopleSort === 'most' ? present(b) - present(a) : present(a) - present(b)) || a.nombre.localeCompare(b.nombre, 'es', { sensitivity: 'base' }));
   $('#people-sort').textContent = SORT_LABEL[peopleSort];
   $('#people-sort').classList.toggle('active', peopleSort !== 'none');
-  const head = `<thead><tr><th>Nombre</th><th>Grupo</th><th>Equipo</th><th title="Horas en Bar/Cocina/Limpieza vs Técnica (solo para quien está en ambos grupos)">Balance</th><th>Aptitudes</th><th class="num" title="Días presentes en el festival">Días</th>
+  const head = `<thead><tr><th>Nombre</th><th>Grupo</th><th>Equipo</th><th>Aptitudes</th><th title="Horas de más en Técnica (T) o en Bar/Cocina/Limpieza (B/C). Solo para quien está en ambos grupos">Balance</th><th class="num" title="Días presentes en el festival">Días</th>
     ${days.map((d) => `<th class="d" title="${d.label}">${d.dow.slice(0, 1).toUpperCase()}<br>${d.day}</th>`).join('')}<th class="num" title="Horas trabajadas por día de estadía, hasta la fecha del reloj">Prom./día</th><th></th></tr></thead>`;
   const tot = `<tr class="tot"><td colspan="6" style="text-align:right">${loadMode ? 'Horas asignadas por día (lista filtrada)' : 'Presentes por día (lista filtrada)'}</td>
     ${days.map((d) => `<td>${loadMode ? (Math.round(list.reduce((n, p) => n + (workload[p.id]?.[d.date] || 0), 0) / 6) / 10).toString().replace('.', ',') : list.filter((p) => p.av[d.date] === 1).length}</td>`).join('')}<td></td><td></td></tr>`;
   $('#people-table').innerHTML = head + '<tbody>' + tot + list.map((p) => `<tr>
     <td><b>${esc(p.nombre)}</b>${p.por_confirmar ? ' <span class="conf">POR CONFIRMAR</span>' : ''}</td>
-    <td>${esc(p.grupo)}</td>
+    <td title="${esc(p.grupo)}">${esc(GRUPO_CORTO[p.grupo] || p.grupo)}</td>
     <td>${teamsOf(p).map((t) => `<span class="eq ${esc(t)}">${esc(t)}</span>`).join('')}</td>
-    <td class="balc">${balanceCell(p)}</td>
     <td class="aptc">${p.skill_ids.map((id) => `<span class="apt">${esc(skillName(id))}</span>`).join('')}${p.aptitudes ? `<span class="apt-note">${esc(p.aptitudes)}</span>` : ''}</td>
+    <td class="balc">${balanceCell(p)}</td>
     <td class="num"><b>${present(p)}</b></td>
     ${days.map((d) => `<td class="d">${daySquare(p, d)}</td>`).join('')}
     <td class="num">${avgHours(p)}</td>

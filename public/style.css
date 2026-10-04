@@ -177,3 +177,4 @@ tr.flash{animation:flash 1.6s}
 .bal.cb{background:#c2410c}.bal.t{background:#0b7285}
 .baldiff{font-size:11px;font-weight:700;color:var(--mute)}.baldiff.cb{color:#c2410c}.baldiff.t{color:#0b7285}
 .aptc{white-space:normal;min-width:130px;max-width:210px}
+.bal.t{background:#1971c2}.baldiff.t{color:#1971c2}
