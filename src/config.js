@@ -32,3 +32,8 @@ export const COCINA_FIJAS = [
   { start: '17:00', end: '20:30', name: 'Sopar', needed: 2 },
   { start: '22:00', end: '23:30', name: 'Neteja SOPAR', needed: 2 },
 ];
+
+// Un equipo de la hoja de voluntarios puede cubrir una o más áreas de tareas.
+export const AREA_TEAMS = { cocina: ['CUINA', 'NETEJA'], bar: ['BAR'], tecnica: ['TÉCNICA'] };
+// Tope de horas que una persona puede trabajar en un día (lo respeta el asignador automático).
+export const MAX_DAILY_MINUTES = 240;

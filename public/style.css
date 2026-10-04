@@ -132,3 +132,17 @@ input.cell-input[type=time]{width:84px}input.cell-input[type=number]{width:56px}
 .acts{white-space:nowrap}
 tr.flash{animation:flash 1.6s}
 @keyframes flash{from{background:color-mix(in srgb,var(--ok) 35%,transparent)}to{background:transparent}}
+
+#load-toggle.active{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.rules{margin:10px 0 0;padding-left:18px;color:var(--mute);font-size:12px}
+#assign-dialog{width:min(620px,94vw);max-height:92vh;overflow:auto}
+#assign-dialog .lab label.check{flex-direction:row;display:flex;gap:6px;align-items:center;color:var(--ink);font-size:14px}
+.res-sum{font-size:15px;margin:4px 0 10px}.res-sum b{font-size:18px}
+.res-list{max-height:48vh;overflow:auto;border:1px solid var(--line);border-radius:8px}
+.res-list table{font-size:12px}.res-list td{white-space:normal}
+/* carga horaria: colores por horas trabajadas */
+:root{--bone:#efe9d9;--full:#f2c230;--over:#e03131}
+.sq.bone{background:var(--bone);border:1px solid #cfc7b0}.sq.ok{background:var(--ok)}.sq.full{background:var(--full)}.sq.over{background:var(--over)}
+.sq.hrs{display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;width:26px!important;height:24px!important;color:#1d1d22}
+.sq.hrs.off,.sq.hrs.ok,.sq.hrs.over{color:#fff}
+.sq.hrs.off{color:#ddd}

@@ -43,6 +43,7 @@
     <div class="toolbar">
       <div id="area-filter" class="chips"></div>
       <button id="others-toggle" title="En la lista de voluntarios de cada tarea, incluir gente que se apuntó a otros equipos">Mostrar también otros equipos</button>
+      <button id="auto-assign" title="Asignar voluntarios automáticamente">✨ Asignar automáticamente</button>
       <button id="add-task" class="primary">+ Nueva tarea</button>
     </div>
     <div class="table-wrap"><table id="tasks-table"></table></div>
@@ -52,8 +53,9 @@
     <div class="toolbar">
       <input type="search" id="people-search" placeholder="Buscar persona…">
       <div id="people-filter" class="chips"></div>
+      <button id="load-toggle" title="Mostrar las horas asignadas a cada persona cada día">Ver carga horaria</button>
       <button id="add-person" class="primary">+ Nueva persona</button>
-      <span class="legend"><i class="sq on"></i> está <i class="sq off"></i> no está <i class="sq unk"></i> sin datos</span>
+      <span class="legend" id="people-legend"></span>
     </div>
     <div class="table-wrap"><table id="people-table"></table></div>
   </section>
@@ -122,6 +124,28 @@
       <button type="submit" class="primary">Guardar</button>
     </div>
   </form>
+</dialog>
+<dialog id="assign-dialog">
+  <h2>Asignación automática</h2>
+  <div id="assign-form">
+    <div class="grid">
+      <div class="wide lab">Alcance
+        <label class="check"><input type="radio" name="scope" value="day" checked> <span id="assign-day-label">Solo el día seleccionado</span></label>
+        <label class="check"><input type="radio" name="scope" value="all"> Todo el festival (6 → 19 abr)</label>
+      </div>
+      <div class="wide lab">Áreas: <b id="assign-areas" style="color:var(--ink)"></b> <span class="hint">(las activas en los filtros de la tabla)</span></div>
+      <label class="wide check"><input type="checkbox" name="replace"> Reemplazar las asignaciones actuales de esas tareas</label>
+      <p class="wide hint" id="assign-replace-warn" style="color:var(--bad);margin:0" hidden>Se quitarán los voluntarios ya asignados en esas tareas antes de repartir.</p>
+    </div>
+    <ul class="rules">
+      <li>Primero se cubren las tareas que piden aptitudes, solo con personas que las tengan.</li>
+      <li>Después, el resto con personas del equipo del área (Cocina y limpieza ← CUINA/NETEJA, Bar ← BAR, Técnica ← TÉCNICA) que estén ese día.</li>
+      <li>Máximo 4 h por persona y día, sin solapes. Lo que no se pueda cubrir queda vacío.</li>
+      <li>Lo que ya está asignado se respeta y cuenta para las 4 h.</li>
+    </ul>
+    <div class="actions"><button type="button" id="assign-cancel">Cancelar</button><button type="button" id="assign-run" class="primary">Asignar</button></div>
+  </div>
+  <div id="assign-result" hidden></div>
 </dialog>
 <datalist id="people-names"></datalist>
 <datalist id="space-names"></datalist>

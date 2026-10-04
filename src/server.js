@@ -2,7 +2,8 @@ import express from 'express';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { db, seedIfEmpty, sectoresDe } from './db.js';
-import { DAYS, AREAS } from './config.js';
+import { DAYS, AREAS, MAX_DAILY_MINUTES } from './config.js';
+import { autoAssign, workload } from './assigner.js';
 
 seedIfEmpty();
 const app = express();
@@ -12,7 +13,7 @@ app.use(express.static(path.join(path.dirname(fileURLToPath(import.meta.url)), '
 const bad = (res, msg, code = 400) => res.status(code).json({ error: msg });
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 
-app.get('/api/config', (_req, res) => res.json({ days: DAYS, areas: AREAS }));
+app.get('/api/config', (_req, res) => res.json({ days: DAYS, areas: AREAS, maxMinutes: MAX_DAILY_MINUTES }));
 
 function peopleList() {
   const people = db.prepare('SELECT * FROM people ORDER BY id').all();
@@ -236,6 +237,17 @@ app.post('/api/tasks/:id/volunteers', (req, res) => {
 app.delete('/api/tasks/:id/volunteers/:pid', (req, res) => {
   db.prepare('DELETE FROM assignments WHERE task_id = ? AND person_id = ?').run(+req.params.id, +req.params.pid);
   res.json({ ok: true });
+});
+
+app.get('/api/workload', (_req, res) => res.json(workload()));
+
+app.post('/api/assign', (req, res) => {
+  const { scope, date, replace } = req.body;
+  const areas = Array.isArray(req.body.areas) ? req.body.areas.filter((a) => AREAS[a]) : [];
+  if (!areas.length) return bad(res, 'Elige al menos un área');
+  if (scope === 'day' && !DAYS.some((d) => d.date === date)) return bad(res, 'Fecha fuera del festival');
+  const dates = scope === 'all' ? DAYS.map((d) => d.date) : [date];
+  res.json({ ...autoAssign({ dates, areas, replace: !!replace }), days: dates.length });
 });
 
 app.use((err, _req, res, _next) => { console.error(err); bad(res, 'Error interno', 500); });

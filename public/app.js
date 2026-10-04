@@ -20,6 +20,7 @@ let editingId = null;
 let companies = [], spaces = [], dlgCompanies = [], skills = [];
 const pickers = { task: { ids: [], other: false }, person: { ids: [], other: false } };
 let editingPerson = null, pAv = {};
+let workload = {}, loadMode = store.get('loadMode', false);
 const VIEWS = ['voluntarios', 'personas', 'companias', 'espacios'];
 let showOtherTeams = store.get('showOtherTeams', false);
 
@@ -237,21 +238,40 @@ function renderPeopleFilter() {
     .map((t) => `<button data-team="${t}" class="${peopleTeams.has(t) ? 'active' : ''}">${t}</button>`).join('');
 }
 
+const fmtH = (min) => (min / 60).toFixed(2).replace(/\.?0+$/, '').replace('.', ',');
+function peopleLegend() {
+  $('#load-toggle').classList.toggle('active', loadMode);
+  $('#people-legend').innerHTML = loadMode
+    ? '<i class="sq off"></i> no está <i class="sq bone"></i> sin horas <i class="sq ok"></i> &lt; 4 h <i class="sq full"></i> 4 h <i class="sq over"></i> &gt; 4 h'
+    : '<i class="sq on"></i> está <i class="sq off"></i> no está <i class="sq unk"></i> sin datos';
+}
+
+function daySquare(p, d) {
+  const v = p.av[d.date], m = workload[p.id]?.[d.date] || 0;
+  if (!loadMode) return `<i class="sq ${v === 1 ? 'on' : v === 0 ? 'off' : 'unk'}" title="${d.label}: ${v === 1 ? 'está' : v === 0 ? 'no está' : 'sin datos'}"></i>`;
+  const cls = v === 0 ? 'off' : v == null ? 'unk' : m === 0 ? 'bone' : m < cfg.maxMinutes ? 'ok' : m === cfg.maxMinutes ? 'full' : 'over';
+  const state = v === 0 ? 'no está' : v == null ? 'sin datos' : `${fmtH(m) || 0} h`;
+  return `<i class="sq hrs ${cls}" title="${d.label}: ${state}${v === 0 && m ? ` (¡asignada/o ${fmtH(m)} h estando ausente!)` : ''}">${m ? fmtH(m) : ''}</i>`;
+}
+
+async function refreshWorkload() { workload = await api('/api/workload'); }
+
 function renderPeople() {
+  peopleLegend();
   const q = $('#people-search').value.trim().toLowerCase();
   const list = people.filter((p) => (!q || p.nombre.toLowerCase().includes(q))
     && (!peopleTeams.size || teamsOf(p).some((t) => peopleTeams.has(t))));
   const days = cfg.days;
   const head = `<thead><tr><th>Nombre</th><th>Grupo</th><th>Equipo</th><th class="num">Dispo</th>
     ${days.map((d) => `<th class="d" title="${d.label}">${d.dow.slice(0, 1).toUpperCase()}<br>${d.day}</th>`).join('')}<th>Aptitudes</th><th></th></tr></thead>`;
-  const tot = `<tr class="tot"><td colspan="4" style="text-align:right">Presentes por día (lista filtrada)</td>
-    ${days.map((d) => `<td>${list.filter((p) => p.av[d.date] === 1).length}</td>`).join('')}<td></td><td></td></tr>`;
+  const tot = `<tr class="tot"><td colspan="4" style="text-align:right">${loadMode ? 'Horas asignadas por día (lista filtrada)' : 'Presentes por día (lista filtrada)'}</td>
+    ${days.map((d) => `<td>${loadMode ? fmtH(list.reduce((n, p) => n + (workload[p.id]?.[d.date] || 0), 0)) || 0 : list.filter((p) => p.av[d.date] === 1).length}</td>`).join('')}<td></td><td></td></tr>`;
   $('#people-table').innerHTML = head + '<tbody>' + tot + list.map((p) => `<tr>
     <td><b>${esc(p.nombre)}</b>${p.por_confirmar ? ' <span class="conf">POR CONFIRMAR</span>' : ''}</td>
     <td>${esc(p.grupo)}</td>
     <td>${teamsOf(p).map((t) => `<span class="eq ${esc(t)}">${esc(t)}</span>`).join('')}</td>
     <td class="num">${p.dispo ?? ''}${p.dispo ? '%' : ''}</td>
-    ${days.map((d) => { const v = p.av[d.date]; return `<td class="d"><i class="sq ${v === 1 ? 'on' : v === 0 ? 'off' : 'unk'}" title="${d.label}: ${v === 1 ? 'está' : v === 0 ? 'no está' : 'sin datos'}"></i></td>`; }).join('')}
+    ${days.map((d) => `<td class="d">${daySquare(p, d)}</td>`).join('')}
     <td>${p.skill_ids.map((id) => `<span class="apt">${esc(skillName(id))}</span>`).join('')}${p.aptitudes ? `<span class="apt-note">${esc(p.aptitudes)}</span>` : ''}</td>
     <td><button class="icon" data-pedit="${p.id}" title="Editar persona">✎</button></td></tr>`).join('') + '</tbody>';
 }
@@ -260,7 +280,7 @@ function showView(v) {
   view = v; store.set('view', v);
   document.querySelectorAll('.tabs button').forEach((b) => b.classList.toggle('active', b.dataset.view === v));
   for (const k of VIEWS) $(`#view-${k}`).hidden = k !== v;
-  if (v === 'personas') renderPeople();
+  if (v === 'personas') run(refreshWorkload().then(renderPeople));
   else if (v === 'voluntarios') renderTasks();
   else run(refreshCatalog().then(v === 'companias' ? renderCompanies : renderSpaces));
 }
@@ -502,6 +522,35 @@ document.addEventListener('keydown', (e) => {
   }
   if (e.key === 'Enter' && e.target.dataset?.skInput) { e.preventDefault(); run(saveOtherSkill(e.target.dataset.skInput)); }
 });
+$('#load-toggle').onclick = () => { loadMode = !loadMode; store.set('loadMode', loadMode); run(refreshWorkload().then(renderPeople)); };
+$('#auto-assign').onclick = () => {
+  const day = cfg.days.find((d) => d.date === selDay);
+  $('#assign-day-label').textContent = `Solo el día seleccionado (${day.label})`;
+  $('#assign-areas').textContent = [...areas].map((a) => cfg.areas[a]).join(', ') || 'ninguna';
+  $('#assign-form').hidden = false; $('#assign-result').hidden = true;
+  $('#assign-form [name=replace]').checked = false; $('#assign-replace-warn').hidden = true;
+  $('#assign-run').disabled = !areas.size;
+  $('#assign-dialog').showModal();
+};
+$('#assign-form [name=replace]').onchange = (e) => { $('#assign-replace-warn').hidden = !e.target.checked; };
+$('#assign-cancel').onclick = () => $('#assign-dialog').close();
+$('#assign-run').onclick = async () => {
+  const btn = $('#assign-run'); btn.disabled = true;
+  try {
+    const r = await api('/api/assign', 'POST', { scope: document.querySelector('#assign-form [name=scope]:checked').value, date: selDay,
+      areas: [...areas], replace: $('#assign-form [name=replace]').checked });
+    const slots = r.unresolved_slots;
+    $('#assign-result').innerHTML = `<p class="res-sum"><b>${r.assigned}</b> asignaciones nuevas. ${r.unresolved.length
+      ? `Quedan <b>${r.unresolved.length}</b> ${r.unresolved.length === 1 ? 'tarea sin resolver' : 'tareas sin resolver'} (${slots} ${slots === 1 ? 'hueco vacío' : 'huecos vacíos'}).`
+      : 'No queda ninguna tarea sin resolver. 🎉'}</p>`
+      + (r.unresolved.length ? `<div class="res-list"><table><thead><tr><th>Día</th><th>Hora</th><th>Tarea</th><th class="num">Faltan</th><th>Motivo</th></tr></thead><tbody>${r.unresolved.map((u) =>
+        `<tr><td>${fmtDay(u.date)}</td><td>${u.start}–${u.end}</td><td><span class="tag ${u.area}">${esc(cfg.areas[u.area])}</span> <b>${esc(u.name)}</b>${u.space ? ` · ${esc(u.space)}` : ''}</td><td class="num">${u.missing}</td><td>${esc(u.reason)}</td></tr>`).join('')}</tbody></table></div>` : '')
+      + '<div class="actions"><button type="button" id="assign-close" class="primary">Cerrar</button></div>';
+    $('#assign-form').hidden = true; $('#assign-result').hidden = false;
+    $('#assign-close').onclick = () => $('#assign-dialog').close();
+    await loadTasks();
+  } catch (e) { toast(e.message); } finally { btn.disabled = false; }
+};
 $('#add-person').onclick = () => openPerson(null);
 $('#add-task').onclick = () => openTask(null);
 $('#people-search').oninput = renderPeople;
