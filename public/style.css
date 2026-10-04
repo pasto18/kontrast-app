@@ -146,3 +146,8 @@ tr.flash{animation:flash 1.6s}
 .sq.hrs{display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;width:26px!important;height:24px!important;color:#1d1d22}
 .sq.hrs.off,.sq.hrs.ok,.sq.hrs.over{color:#fff}
 .sq.hrs.off{color:#ddd}
+
+/* presente = hueso siempre; el color solo aparece con "Ver carga horaria" */
+.sq.on{background:var(--bone);border:1px solid #cfc7b0}
+.slot[draggable=true]{cursor:grab}.slot.dragging{opacity:.35}
+.slot.drop{outline:2px solid var(--accent);background:color-mix(in srgb,var(--accent) 14%,transparent)}

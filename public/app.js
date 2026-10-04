@@ -57,7 +57,7 @@ async function api(url, method = 'GET', body) {
   if (!r.ok) throw new Error(data.error || `Error ${r.status}`);
   return data;
 }
-function toast(msg) { const t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => (t.hidden = true), 3500); }
+function toast(msg) { const t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => (t.hidden = true), msg.startsWith('⚠') ? 8000 : 3500); }
 const run = (p) => p.catch((e) => { toast(e.message); });
 
 async function loadTasks() { tasks = await api(`/api/tasks?date=${selDay}`); renderTasks(); }
@@ -111,7 +111,7 @@ function pickerOptions(t) {
 
 // Un hueco por voluntario necesario: el tamaño de la fila no cambia al asignar.
 function slots(t) {
-  const out = t.volunteers.map((v) => `<div class="slot"><span class="vol">${esc(v.nombre)}</span><button data-rm="${t.id}:${v.id}" title="Quitar">×</button></div>`);
+  const out = t.volunteers.map((v) => `<div class="slot" draggable="true" data-task="${t.id}" data-person="${v.id}" title="Arrastra sobre otro nombre para intercambiar"><span class="vol">${esc(v.nombre)}</span><button data-rm="${t.id}:${v.id}" title="Quitar">×</button></div>`);
   for (let i = t.volunteers.length; i < t.needed; i++) {
     out.push(i === t.volunteers.length
       ? `<div class="slot"><select data-add="${t.id}">${pickerOptions(t)}</select></div>`
@@ -120,7 +120,7 @@ function slots(t) {
   return out.join('');
 }
 
-let editing = null, otherTask = null, dirty = false, flashId = null;
+let editing = null, otherTask = null, dirty = false, flashId = null, drag = null;
 
 function skillCell(t) {
   const chips = t.skills.map((k) => `<span class="skc">${esc(k.name)}<button data-tsk-rm="${t.id}:${k.id}" title="Quitar">×</button></span>`).join('');
@@ -130,7 +130,7 @@ function skillCell(t) {
 }
 
 function renderTasks(force = false) {
-  if (!force && (editing || otherTask !== null)) { dirty = true; return; } // no pisar una celda en edición
+  if (!force && (editing || otherTask !== null || drag)) { dirty = true; return; } // no pisar una celda en edición
   dirty = false;
   const rows = tasks.filter((t) => areas.has(t.area));
   const head = `<thead><tr><th class="tm">Inicio</th><th class="tm">Fin</th><th class="num tm">Dur.</th><th>Área</th><th>Espacio</th><th>Tarea</th><th>Aptitudes</th>
@@ -211,6 +211,27 @@ $('#tasks-table').addEventListener('click', (e) => {
   if (td && !editing) startEdit(+td.closest('tr').dataset.id, td.dataset.field, td);
 });
 
+// ---- Intercambio de voluntarios arrastrando un nombre sobre otro ----
+const table = $('#tasks-table');
+const dropSlot = (e) => { const s = e.target.closest('.slot[data-person]'); return s && drag && s.dataset.task !== drag.task ? s : null; };
+table.addEventListener('dragstart', (e) => {
+  const s = e.target.closest('.slot[data-person]'); if (!s) return;
+  drag = { task: s.dataset.task, person: s.dataset.person };
+  e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', `${drag.task}:${drag.person}`);
+  s.classList.add('dragging');
+});
+table.addEventListener('dragover', (e) => { if (dropSlot(e)) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; } });
+table.addEventListener('dragenter', (e) => dropSlot(e)?.classList.add('drop'));
+table.addEventListener('dragleave', (e) => { const s = e.target.closest('.slot'); if (s && !s.contains(e.relatedTarget)) s.classList.remove('drop'); });
+table.addEventListener('drop', (e) => {
+  const s = dropSlot(e); if (!s) return;
+  e.preventDefault();
+  const from = drag; drag = null;
+  run(api('/api/assignments/swap', 'POST', { task_a: +from.task, person_a: +from.person, task_b: +s.dataset.task, person_b: +s.dataset.person })
+    .then((r) => { if (r.warnings.length) toast('⚠ ' + r.warnings.join(' · ')); })).finally(loadTasks);
+});
+table.addEventListener('dragend', () => { drag = null; if (dirty) renderTasks(); else document.querySelectorAll('.slot.dragging,.slot.drop').forEach((x) => x.classList.remove('dragging', 'drop')); });
+
 async function saveTaskSkillOther(id) {
   const name = $(`[data-tsk-input="${id}"]`).value.trim();
   if (!name) return;
@@ -242,7 +263,7 @@ const fmtH = (min) => (min / 60).toFixed(2).replace(/\.?0+$/, '').replace('.', '
 function peopleLegend() {
   $('#load-toggle').classList.toggle('active', loadMode);
   $('#people-legend').innerHTML = loadMode
-    ? '<i class="sq off"></i> no está <i class="sq bone"></i> sin horas <i class="sq ok"></i> &lt; 4 h <i class="sq full"></i> 4 h <i class="sq over"></i> &gt; 4 h'
+    ? '<i class="sq off"></i> no está <i class="sq bone"></i> está, sin horas <i class="sq ok"></i> &lt; 4 h <i class="sq full"></i> 4 h <i class="sq over"></i> &gt; 4 h'
     : '<i class="sq on"></i> está <i class="sq off"></i> no está <i class="sq unk"></i> sin datos';
 }
 

@@ -2,8 +2,8 @@ import express from 'express';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { db, seedIfEmpty, sectoresDe } from './db.js';
-import { DAYS, AREAS, MAX_DAILY_MINUTES } from './config.js';
-import { autoAssign, workload } from './assigner.js';
+import { DAYS, AREAS, AREA_TEAMS, MAX_DAILY_MINUTES } from './config.js';
+import { autoAssign, workload, range, overlap, durMin } from './assigner.js';
 
 seedIfEmpty();
 const app = express();
@@ -237,6 +237,38 @@ app.post('/api/tasks/:id/volunteers', (req, res) => {
 app.delete('/api/tasks/:id/volunteers/:pid', (req, res) => {
   db.prepare('DELETE FROM assignments WHERE task_id = ? AND person_id = ?').run(+req.params.id, +req.params.pid);
   res.json({ ok: true });
+});
+
+// Avisos (no bloqueantes) tras colocar a una persona en una tarea a mano.
+function assignmentWarnings(personId, taskId) {
+  const t = db.prepare('SELECT * FROM tasks WHERE id = ?').get(taskId);
+  const p = db.prepare('SELECT nombre, equipo FROM people WHERE id = ?').get(personId);
+  const out = [];
+  const present = db.prepare('SELECT present FROM availability WHERE person_id = ? AND date = ?').get(personId, t.date)?.present;
+  if (present === 0) out.push(`${p.nombre} figura como ausente ese día`);
+  if (!AREA_TEAMS[t.area].some((x) => p.equipo.split(',').map((e) => e.trim()).includes(x))) out.push(`${p.nombre} no es del equipo de ${AREAS[t.area]}`);
+  const mine = db.prepare('SELECT t.* FROM assignments a JOIN tasks t ON t.id = a.task_id WHERE a.person_id = ? AND t.date = ?').all(personId, t.date);
+  for (const o of mine) if (o.id !== t.id && overlap(range(o), range(t))) out.push(`${p.nombre} se solapa con "${o.name}" (${o.start}–${o.end})`);
+  const mins = mine.reduce((n, o) => n + durMin(o), 0);
+  if (mins > MAX_DAILY_MINUTES) out.push(`${p.nombre} pasa a trabajar ${(mins / 60).toString().replace('.', ',')} h ese día (tope ${MAX_DAILY_MINUTES / 60} h)`);
+  return out;
+}
+
+// Intercambia dos voluntarios entre dos tareas distintas.
+app.post('/api/assignments/swap', (req, res) => {
+  const [ta, pa, tb, pb] = ['task_a', 'person_a', 'task_b', 'person_b'].map((k) => +req.body[k]);
+  if (ta === tb) return bad(res, 'Elige nombres de tareas distintas');
+  const has = (t, p) => !!db.prepare('SELECT 1 FROM assignments WHERE task_id = ? AND person_id = ?').get(t, p);
+  if (!has(ta, pa) || !has(tb, pb)) return bad(res, 'Esa asignación ya no existe; la tabla se ha recargado', 409);
+  if (has(tb, pa) || has(ta, pb)) return bad(res, 'Una de las dos personas ya está en la otra tarea', 409);
+  db.exec('BEGIN');
+  try {
+    db.prepare('DELETE FROM assignments WHERE (task_id = ? AND person_id = ?) OR (task_id = ? AND person_id = ?)').run(ta, pa, tb, pb);
+    const ins = db.prepare('INSERT INTO assignments (task_id, person_id) VALUES (?,?)');
+    ins.run(tb, pa); ins.run(ta, pb);
+    db.exec('COMMIT');
+  } catch (e) { db.exec('ROLLBACK'); throw e; }
+  res.json({ ok: true, warnings: [...assignmentWarnings(pa, tb), ...assignmentWarnings(pb, ta)] });
 });
 
 app.get('/api/workload', (_req, res) => res.json(workload()));

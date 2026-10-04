@@ -9,8 +9,8 @@ import { AREA_TEAMS, MAX_DAILY_MINUTES as CAP } from './config.js';
 const NIGHT = 360; // los turnos que empiezan antes de las 06:00 son madrugada del día siguiente
 const toMin = (h) => +h.slice(0, 2) * 60 + +h.slice(3);
 export const durMin = (t) => (toMin(t.end) - toMin(t.start) + 1440) % 1440;
-const range = (t) => { const s0 = toMin(t.start), s = s0 < NIGHT ? s0 + 1440 : s0; return [s, s + durMin(t)]; };
-const overlap = (a, b) => a[0] < b[1] && b[0] < a[1];
+export const range = (t) => { const s0 = toMin(t.start), s = s0 < NIGHT ? s0 + 1440 : s0; return [s, s + durMin(t)]; };
+export const overlap = (a, b) => a[0] < b[1] && b[0] < a[1];
 
 function loadPeople() {
   const people = new Map(db.prepare('SELECT id, nombre, equipo, dispo FROM people').all().map((p) => [p.id, {
