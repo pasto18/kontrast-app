@@ -4,7 +4,7 @@
 // Siempre: la persona está ese día, es del equipo del área, no se solapa con otra tarea suya
 // y no supera su tope diario (MAX_DAILY_MINUTES; 5 h para TAQUILLA) de trabajo ese día. Lo que no se pueda cubrir se deja vacío.
 import { db } from './db.js';
-import { AREA_TEAMS, AREAS, AREA_GROUP, STRICT_AREAS, MAX_DAILY_MINUTES as CAP, capOf, horarioMismatch } from './config.js';
+import { DAYS, AREA_TEAMS, AREAS, AREA_GROUP, STRICT_AREAS, MAX_DAILY_MINUTES as CAP, capOf, horarioMismatch } from './config.js';
 
 const NIGHT = 360; // los turnos que empiezan antes de las 06:00 son madrugada del día siguiente
 const toMin = (h) => +h.slice(0, 2) * 60 + +h.slice(3);
@@ -46,7 +46,14 @@ export function autoAssign({ dates, areas, replace }) {
     // Horas de cada persona en cada grupo (cb = Bar/Cocina/Limpieza, t = Técnica) en todo el festival.
     // Quien está en ambos grupos debería repartir su tiempo mitad y mitad.
     const gh = new Map(people.map((p) => [p.id, { cb: 0, t: 0 }]));
-    for (const r of db.prepare('SELECT a.person_id, t.area, t.start, t.end FROM assignments a JOIN tasks t ON t.id = a.task_id').all()) if (AREA_GROUP[r.area]) gh.get(r.person_id)[AREA_GROUP[r.area]] += durMin(r);
+    // Reparto equitativo: minutos ya asignados a cada persona en todo el festival y días que está; se intenta igualar horas por día de estadía.
+    const tot = new Map(people.map((p) => [p.id, 0]));
+    const stay = new Map(people.map((p) => [p.id, Math.max(1, DAYS.filter((d) => p.av[d.date] === 1).length)]));
+    const ratio = (p) => tot.get(p.id) / 60 / stay.get(p.id);
+    for (const r of db.prepare('SELECT a.person_id, t.area, t.start, t.end FROM assignments a JOIN tasks t ON t.id = a.task_id').all()) {
+      tot.set(r.person_id, tot.get(r.person_id) + durMin(r));
+      if (AREA_GROUP[r.area]) gh.get(r.person_id)[AREA_GROUP[r.area]] += durMin(r);
+    }
     const dual = (p) => p.teams.has('TÉCNICA') && ['CUINA', 'NETEJA', 'BAR'].some((x) => p.teams.has(x));
     // Clase de un candidato para una tarea: 0 = va por detrás en ese grupo (conviene ponerlo), 1 = neutro, 2 = ya va por delante (se evita).
     const balClass = (p, c) => {
@@ -86,9 +93,19 @@ export function autoAssign({ dates, areas, replace }) {
         if (balClass(p, c) === 2) result.imbalanced++;
         if (mis(p, c)) result.time_mismatch++;
         insert.run(c.t.id, p.id); c.who.add(p.id); c.missing--; book(p.id, c.t); result.assigned++;
+        tot.set(p.id, tot.get(p.id) + c.dur);
         if (AREA_GROUP[c.t.area]) gh.get(p.id)[AREA_GROUP[c.t.area]] += c.dur;
       };
       const lo = (p) => load.get(p.id) || 0;
+      // Orden de preferencia de candidatos: 1) horario, 2) no empeorar el balance Técnica / Bar-Cocina, 3) quien lleva menos horas
+      // por día de estadía en todo el festival (tramos de 0,25 h), 4) quien va por detrás en balance, 5) menos horas, menos carga ese día.
+      // Puntuación de un candidato para una tarea (menor = mejor): horas por día de estadía que lleva en todo el festival, más (o menos)
+      // su diferencia entre el grupo de esta tarea y el otro si está en ambos grupos. Así quien va por detrás en balance sube posiciones
+      // y quien ya va por delante baja, sin saltarse del todo el reparto equitativo.
+      const W = 3; // peso del balance Técnica / Bar-Cocina frente al reparto equitativo
+      const score = (p, c) => { const g = AREA_GROUP[c.t.area], o = g === 't' ? 'cb' : 't'; return ratio(p) + (g && dual(p) ? (W * (gh.get(p.id)[g] - gh.get(p.id)[o])) / 60 / stay.get(p.id) : 0); };
+      const keyOf = (p, c) => [mis(p, c), score(p, c), ratio(p), lo(p), p.teams.size, p.id];
+      const byKey = (c) => (a, b) => { const x = keyOf(a, c), y = keyOf(b, c); for (let i = 0; i < x.length; i++) if (x[i] !== y[i]) return x[i] - y[i]; return 0; };
 
       // Cubrir las aptitudes pedidas: basta con que alguien de la tarea tenga cada una; el resto no necesita tenerla.
       const coverSkills = (c) => {
@@ -97,7 +114,7 @@ export function autoAssign({ dates, areas, replace }) {
           if (!unc.length) break;
           const n = (p) => unc.filter((s) => p.skills.has(s)).length;
           const best = c.pool.filter((p) => eligible(p, c) && n(p) > 0)
-            .sort((a, b) => n(b) - n(a) || mis(a, c) - mis(b, c) || balClass(a, c) - balClass(b, c) || gap(a, c) - gap(b, c) || lo(a) - lo(b) || a.id - b.id)[0];
+            .sort((a, b) => n(b) - n(a) || byKey(c)(a, b))[0];
           if (!best) break;
           give(best, c);
         }
@@ -107,7 +124,7 @@ export function autoAssign({ dates, areas, replace }) {
       const fillRest = (c) => {
         while (c.missing > 0 && !uncovered(c).length) {
           const best = fill(c).filter((p) => eligible(p, c))
-            .sort((a, b) => mis(a, c) - mis(b, c) || balClass(a, c) - balClass(b, c) || gap(a, c) - gap(b, c) || lo(a) - lo(b) || a.teams.size - b.teams.size || a.id - b.id)[0];
+            .sort(byKey(c))[0];
           if (!best) break;
           give(best, c);
         }
