@@ -126,8 +126,9 @@ function pickerOptions(t) {
 
 // Un hueco por voluntario necesario: el tamaño de la fila no cambia al asignar.
 function slots(t) {
-  const out = t.volunteers.map((v) => { const bad = showTime && horarioMismatch(people.find((p) => p.id === v.id)?.horario, t.start);
-    return `<div class="slot${bad ? ' mis' : ''}" draggable="true" data-task="${t.id}" data-person="${v.id}" title="${bad ? 'No es el momento del día apropiado para esta persona' : 'Arrastra sobre otro nombre para intercambiar'}"><span class="vol">${esc(v.nombre)}</span><button data-rm="${t.id}:${v.id}" title="Quitar">×</button></div>`; });
+  const tk = searchTokens();
+  const out = t.volunteers.map((v) => { const hit = tk.length && tk.some((k) => norm(v.nombre).includes(k)); const bad = showTime && horarioMismatch(people.find((p) => p.id === v.id)?.horario, t.start);
+    return `<div class="slot${bad ? ' mis' : ''}${hit ? ' hit' : ''}" draggable="true" data-task="${t.id}" data-person="${v.id}" title="${bad ? 'No es el momento del día apropiado para esta persona' : 'Arrastra sobre otro nombre para intercambiar'}"><span class="vol">${esc(v.nombre)}</span><button data-rm="${t.id}:${v.id}" title="Quitar">×</button></div>`; });
   for (let i = t.volunteers.length; i < t.needed; i++) {
     out.push(i === t.volunteers.length
       ? `<div class="slot"><select data-add="${t.id}">${pickerOptions(t)}</select></div>`
@@ -145,13 +146,24 @@ function skillCell(t) {
   return `${chips}<select data-tsk-add="${t.id}"><option value="">+ aptitud</option>${skills.filter((k) => !have.has(k.id)).map((k) => `<option value="${k.id}">${esc(k.name)}</option>`).join('')}<option value="__other">Otro…</option></select>`;
 }
 
+const norm = (x) => x.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+// Búsqueda en el reparto: persona, tarea, espacio, responsable, aptitud, compañía u obra (sin tildes ni mayúsculas, todas las palabras).
+function taskHaystack(t) {
+  const obras = t.companies.flatMap((c) => (companies.find((x) => x.id === c.id)?.shows ?? []).map((s) => s.obra));
+  return norm([t.name, t.space, t.responsible, ...t.volunteers.map((v) => v.nombre), ...t.skills.map((k) => k.name), ...t.companies.map((c) => c.name), ...obras].join(' | '));
+}
+const searchTokens = () => norm($('#task-search').value.trim()).split(/\s+/).filter(Boolean);
+
 function renderTasks(force = false) {
   if (!force && (editing || otherTask !== null || drag)) { dirty = true; return; } // no pisar una celda en edición
   dirty = false;
-  const rows = tasks.filter((t) => areas.has(t.area));
+  const tokens = searchTokens();
+  const byArea = tasks.filter((t) => areas.has(t.area));
+  const rows = tokens.length ? byArea.filter((t) => { const h = taskHaystack(t); return tokens.every((k) => h.includes(k)); }) : byArea;
+  $('#task-search-count').textContent = tokens.length ? `${rows.length}/${byArea.length} tareas` : '';
   const head = `<thead><tr><th class="tm">Inicio</th><th class="tm">Fin</th><th class="num tm">Dur.</th><th>Área</th><th>Espacio</th><th>Tarea</th><th>Aptitudes</th>
     <th class="num nec" title="Voluntarios necesarios">Nec.</th><th>Responsable</th><th class="est"></th><th>Voluntarios</th><th></th></tr></thead>`;
-  if (!rows.length) { $('#tasks-table').innerHTML = head + `<tbody><tr><td colspan="12" class="empty">No hay tareas para este día con los filtros actuales.</td></tr></tbody>`; return; }
+  if (!rows.length) { $('#tasks-table').innerHTML = head + `<tbody><tr><td colspan="12" class="empty">${tokens.length ? 'Ninguna tarea de este día coincide con la búsqueda.' : 'No hay tareas para este día con los filtros actuales.'}</td></tr></tbody>`; return; }
   $('#tasks-table').innerHTML = head + '<tbody>' + rows.map((t) => {
     const st = taskStatus(t), n = t.volunteers.length;
     const cls = t.needed === 0 ? 'f3' : n === 0 ? 'f0' : n < t.needed ? 'f1' : 'f2';
@@ -462,7 +474,6 @@ async function refreshCatalog() {
   $('#space-names').innerHTML = spaces.map((x) => `<option value="${esc(x.name)}">`).join('');
 }
 const fmtDay = (date) => cfg.days.find((d) => d.date === date)?.label ?? date;
-const norm = (x) => x.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 const nTasks = (n) => `<span class="n ${n ? '' : 'zero'}">${n} ${n === 1 ? 'tarea' : 'tareas'}</span>`;
 
 function renderCompanies() {
@@ -780,6 +791,7 @@ $('#assign-run').onclick = async () => {
   } catch (e) { toast(e.message); } finally { btn.disabled = false; }
 };
 $('#time-toggle').onclick = () => { showTime = !showTime; store.set('showTime', showTime); $('#time-toggle').classList.toggle('active', showTime); renderTasks(); };
+$('#task-search').oninput = () => renderTasks();
 $('#add-person').onclick = () => openPerson(null);
 $('#add-task').onclick = () => openTask(null);
 $('#people-search').oninput = renderPeople;

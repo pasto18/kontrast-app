@@ -200,3 +200,7 @@ select.psk{font-size:11px;padding:1px 2px;border-style:dashed;max-width:92px;col
 .ptl{table-layout:fixed;width:100%}
 .ptl td:nth-child(1){width:105px}.ptl td:nth-child(2){width:60px}.ptl td:nth-child(3){width:150px}.ptl td:nth-child(4){width:135px}.ptl td:nth-child(6){width:220px}.ptl td:nth-child(7){width:70px}
 .ptl td{overflow:hidden;text-overflow:ellipsis}.ptl td.v{white-space:normal}
+
+.tsearch{margin-left:auto;display:flex;align-items:center;gap:8px}
+.tsearch input{width:250px;max-width:50vw}.tsearch .hint{white-space:nowrap}
+.slot.hit{border-color:var(--accent);box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 35%,transparent);background:color-mix(in srgb,var(--accent) 12%,transparent)}
