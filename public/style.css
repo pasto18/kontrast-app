@@ -262,3 +262,22 @@ select.dieta-sel:hover{border-color:var(--line)}
 .cname{font-size:11px;font-weight:400;color:var(--mute);margin-left:2px}
 .box-total{text-align:right}.box-total .hint{font-size:11px;font-weight:400;line-height:1.3;margin-top:4px}
 table.mem{table-layout:auto}table.mem td{white-space:normal}table.mem th.d,table.mem td.d{padding:3px 2px;text-align:center;width:22px}table.mem th.d{font-size:10px;line-height:1.1}
+
+/* Taquilla */
+.tq-sum{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+.tq-sum div{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:8px 14px}
+.tq-sum b{font-size:20px;display:block;line-height:1.1}.tq-sum span{font-size:12px;color:var(--mute)}
+#tq-table{table-layout:auto}#tq-table td{white-space:normal}#tq-table tr.show{cursor:pointer}#tq-table tr.show:hover{background:color-mix(in srgb,var(--accent) 6%,transparent)}
+#tq-table tr.dayh td{background:var(--bg);font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--mute)}
+#tq-table td.tot{font-size:18px;font-weight:800}
+#tq-table tr.detail td{background:var(--bg);padding:6px 12px 12px 40px}
+#tq-table tr.zero td{opacity:.55}
+.tq-bar{display:flex;height:8px;border-radius:99px;overflow:hidden;background:var(--line);min-width:120px;max-width:260px;margin-top:4px}
+.tq-bar i{display:block;height:100%}.tq-bar i.s{background:var(--accent)}.tq-bar i.a{background:#7048e8}
+table.dt{font-size:12px;width:auto;min-width:60%}table.dt td,table.dt th{padding:3px 10px}
+.kind-e{color:var(--accent)}.kind-a{color:#7048e8}.kind-c{color:#0b7285}
+details.tq-types{margin:14px 0}details.tq-types summary{cursor:pointer;font-weight:700;padding:6px 0}
+#tq-types{font-size:12px}#tq-types td{white-space:normal}
+.buyer{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 14px;margin:8px 0}
+.buyer h4{margin:0 0 6px;font-size:14px}.buyer .ord{margin:6px 0 0 8px;padding-left:10px;border-left:3px solid var(--line);font-size:12px}
+.buyer .att{margin:4px 0}.buyer .att b{font-size:13px}.buyer .tk{display:inline-block;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:0 6px;margin:2px 4px 0 0;font-size:11px}

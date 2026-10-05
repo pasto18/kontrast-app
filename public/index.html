@@ -15,6 +15,7 @@
     <button data-view="companias">Compañías</button>
     <button data-view="espacios">Espacios</button>
     <button data-view="cocina">Cocina</button>
+    <button data-view="taquilla">Taquilla</button>
   </nav>
   <div class="clock">
   <button id="clock-toggle" class="clock-icon" title="Reloj simulado" aria-expanded="false">🕒</button>
@@ -94,6 +95,16 @@
         <button id="dt-add-btn" class="primary">Guardar</button>
       </div>
     </div>
+  </section>
+
+  <section id="view-taquilla" hidden>
+    <div class="tq-sum" id="tq-summary"></div>
+    <div id="tq-days" class="days"></div>
+    <div class="table-wrap"><table id="tq-table"></table></div>
+    <details class="tq-types" id="tq-types-box"><summary>Tipos de entrada <span id="tq-types-count"></span></summary><div class="table-wrap"><table id="tq-types"></table></div></details>
+    <h3 class="sec">Compradores y asistentes</h3>
+    <div class="toolbar"><input type="search" id="tq-search" placeholder="Buscar por nombre o correo…" autocomplete="off"><span class="hint" id="tq-search-hint">Los pedidos se agrupan por comprador, con los asistentes de cada uno y sus entradas.</span></div>
+    <div id="tq-buyers"></div>
   </section>
 </main>
 

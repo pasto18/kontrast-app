@@ -3,10 +3,12 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { db, seedIfEmpty, sectoresDe } from './db.js';
 import { DAYS, AREAS, AREA_TEAMS, STRICT_AREAS, HORARIOS, MAX_DAILY_MINUTES, capOf } from './config.js';
+import { seedEntradasIfNeeded, taquilla, searchBuyers } from './entradas.js';
 import { listTemplates, disciplines, applyTemplate } from './templates.js';
 import { autoAssign, workload, findConflicts, candidatesFor, range, overlap, durMin } from './assigner.js';
 
 seedIfEmpty();
+seedEntradasIfNeeded(path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'data', 'seed', 'entradas.csv'));
 const app = express();
 app.use(express.json());
 app.use(express.static(path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'public')));
@@ -404,6 +406,9 @@ app.delete('/api/templates/:id', (req, res) => {
   db.prepare('DELETE FROM task_templates WHERE id = ?').run(+req.params.id);
   res.json({ ok: true });
 });
+
+app.get('/api/taquilla', (_req, res) => res.json(taquilla()));
+app.get('/api/buyers', (req, res) => res.json(searchBuyers(String(req.query.q ?? ''))));
 
 app.get('/api/workload', (_req, res) => res.json(workload()));
 

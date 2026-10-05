@@ -12,3 +12,4 @@ npm run reset-db   # borra la BD; se recrea desde data/seed/ al arrancar
 - BD: `data/kontrast.db` (se crea sola). Datos iniciales: `data/seed/voluntarios.csv` y las tareas fijas de `src/config.js`.
 - Áreas: `cocina` (Cocina y limpieza), `bar`, `tecnica`. Hay tareas de cocina (fijas) y de bar; técnica (de las hojas de 2026), taquilla automática por espectáculo; compañías (programa del cartel) y espacios.
 - El reloj simulado vive en el navegador (localStorage); empieza el lunes 6 a las 08:00.
+- Taquilla: las entradas se cargan una vez desde `data/seed/entradas.csv`. Para cargar un export nuevo: `npm run import-entradas -- ruta/al/export.csv` (sustituye entradas, pedidos, compradores y asistentes).

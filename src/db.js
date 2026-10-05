@@ -136,7 +136,7 @@ if (!db.prepare("SELECT 1 FROM pragma_table_info('people') WHERE name = 'horario
 // El equipo "BILLETERÍA" pasa a llamarse TAQUILLA en toda la aplicación.
 db.exec("UPDATE people SET equipo = REPLACE(REPLACE(equipo, 'BILLETERÍA', 'TAQUILLA'), 'BILLETERIA', 'TAQUILLA') WHERE equipo LIKE '%BILLETER%'");
 
-function parseCsvLine(line) {
+export function parseCsvLine(line) {
   const out = [];
   let cur = '', q = false;
   for (let i = 0; i < line.length; i++) {
@@ -385,7 +385,7 @@ function seedCompanias() {
 
 // Cada carga inicial se aplica una sola vez (así borrar tareas no las hace reaparecer).
 db.exec('CREATE TABLE IF NOT EXISTS seeds (name TEXT PRIMARY KEY)');
-function applySeed(name, fn) {
+export function applySeed(name, fn) {
   if (db.prepare('SELECT 1 FROM seeds WHERE name = ?').get(name)) return;
   db.exec('BEGIN');
   try { fn(); db.prepare('INSERT INTO seeds (name) VALUES (?)').run(name); db.exec('COMMIT'); } catch (e) { db.exec('ROLLBACK'); throw e; }

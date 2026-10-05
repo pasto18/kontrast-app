@@ -25,7 +25,7 @@ let showTime = store.get('showTime', false);
 let workload = {}, groupHours = {}, loadMode = store.get('loadMode', false);
 // Orden de la tabla de Personas: clic en una cabecera = orden principal, segundo clic = inverso, tercer clic = lista original.
 let peopleSort = store.get('peopleSort2', { key: null, step: 0 });
-const VIEWS = ['voluntarios', 'personas', 'companias', 'espacios', 'cocina'];
+const VIEWS = ['voluntarios', 'personas', 'companias', 'espacios', 'cocina', 'taquilla'];
 let diets = [], dtRowOther = null;
 let showOtherTeams = store.get('showOtherTeams', false);
 
@@ -536,6 +536,7 @@ function showView(v) {
   if (v === 'personas') run(refreshWorkload().then(renderPeople));
   else if (v === 'voluntarios') renderTasks();
   else if (v === 'cocina') run(reloadCocina());
+  else if (v === 'taquilla') run(loadTaquilla());
   else run(refreshCatalog().then(v === 'companias' ? renderCompanies : renderSpaces));
 }
 
@@ -693,6 +694,53 @@ function renderCocina() {
         <td>${p.diet_ids.map((id) => `<span class="dchip">${esc(dietName(id))}<button data-dt-rm="${p.id}:${id}" title="Quitar">×</button></span>`).join('')}${add}</td></tr>`;
     }).join('') || '<tr><td colspan="3" class="empty">Nadie tiene dieta especial ni alergias registradas ese día.</td></tr>'}</tbody>`;
   const ot = $('[data-dt-input]'); if (ot) ot.focus();
+}
+
+// ---------- Taquilla: entradas vendidas por espectáculo ----------
+let taq = null, taqDay = 'all', taqOpen = new Set();
+const eur = (c) => (c == null ? '' : `${(c / 100).toFixed(2).replace('.', ',')} €`);
+const KIND_LABEL = { entrada: 'Entrada', combo: 'Combinada', abono: 'Abono' };
+
+async function loadTaquilla() { taq = await api('/api/taquilla'); renderTaquilla(); }
+
+function renderTaquilla() {
+  if (!taq) return;
+  const sm = taq.summary;
+  $('#tq-summary').innerHTML = [['entradas', sm.tickets], ['pedidos', sm.orders], ['compradores', sm.buyers], ['asistentes', sm.attendees]]
+    .map(([l, n]) => `<div><b>${n}</b><span>${l}</span></div>`).join('');
+  const dates = [...new Set(taq.shows.map((s) => s.date))];
+  $('#tq-days').innerHTML = `<button data-tqday="all" class="${taqDay === 'all' ? 'active' : ''}"><small>Todos</small><b>✦</b></button>` + dates.map((d) => { const day = cfg.days.find((x) => x.date === d);
+    return `<button data-tqday="${d}" class="${taqDay === d ? 'active' : ''}" title="${day.label}"><small>${day.dow.slice(0, 3)}</small><b>${day.day}</b></button>`; }).join('');
+  const tn = Object.fromEntries(taq.types.map((t) => [t.id, t]));
+  const shows = taq.shows.filter((s) => taqDay === 'all' || s.date === taqDay);
+  const max = Math.max(1, ...taq.shows.map((s) => s.total));
+  let lastDate = null, html = '';
+  for (const s of shows) {
+    if (taqDay === 'all' && s.date !== lastDate) { html += `<tr class="dayh"><td colspan="6">${esc(fmtDay(s.date))}</td></tr>`; lastDate = s.date; }
+    const open = taqOpen.has(s.id);
+    html += `<tr class="show${s.total ? '' : ' zero'}" data-tqshow="${s.id}"><td>${s.time}</td><td><b>${esc(s.obra)}</b><div class="cname">${esc(s.company)} · ${esc(s.venue)}</div></td>
+      <td class="num tot">${s.total}<div class="tq-bar" title="${s.sueltas} sueltas · ${s.abonos} abonos"><i class="s" style="width:${(s.sueltas / max) * 100}%"></i><i class="a" style="width:${(s.abonos / max) * 100}%"></i></div></td>
+      <td class="num kind-e">${s.sueltas}</td><td class="num kind-a">${s.abonos}</td><td>${s.total ? (open ? '▾' : '▸') : ''}</td></tr>`;
+    if (open && s.total) html += `<tr class="detail"><td colspan="6"><table class="dt"><thead><tr><th>Tipo de entrada</th><th>Clase</th><th class="num">Vendidas</th></tr></thead><tbody>${s.types.map((x) => { const t = tn[x.id];
+      return `<tr><td>${esc(t.tipologia)}</td><td class="kind-${t.kind[0]}">${KIND_LABEL[t.kind]}</td><td class="num"><b>${x.count}</b></td></tr>`; }).join('')}</tbody></table></td></tr>`;
+  }
+  $('#tq-table').innerHTML = `<thead><tr><th>Hora</th><th>Espectáculo</th><th class="num">Entradas vendidas</th><th class="num" title="Entradas sueltas (incluye las combinadas con el dinar)">Sueltas</th><th class="num" title="Abonos de día o de fin de semana que dan acceso a este espectáculo">Abonos</th><th></th></tr></thead><tbody>${html || '<tr><td colspan="6" class="empty">No hay espectáculos ese día.</td></tr>'}</tbody>`;
+
+  $('#tq-types-count').textContent = `(${taq.types.length})`;
+  const sname = (id) => { const s = taq.shows.find((x) => x.id === id); return `${s.obra} (${fmtDay(s.date).replace(/^\S+ /, '')} ${s.time})`; };
+  $('#tq-types').innerHTML = `<thead><tr><th>Tipo de entrada</th><th>Clase</th><th class="num">Precio</th><th class="num">Vendidas</th><th>Da acceso a</th></tr></thead><tbody>${taq.types.map((t) =>
+    `<tr><td>${esc(t.name)}</td><td class="kind-${t.kind[0]}">${KIND_LABEL[t.kind]}</td><td class="num">${eur(t.price_cents)}</td><td class="num"><b>${t.count}</b></td>
+      <td>${t.show_ids.length ? t.show_ids.map(sname).map(esc).join(' · ') : '<span style="color:var(--bad)">sin espectáculo asociado</span>'}</td></tr>`).join('')}</tbody>`;
+}
+
+let tqTimer = null;
+async function searchBuyersUI() {
+  const q = $('#tq-search').value.trim();
+  if (!q) { $('#tq-buyers').innerHTML = ''; return; }
+  const res = await api(`/api/buyers?q=${encodeURIComponent(q)}`);
+  $('#tq-buyers').innerHTML = res.map((b) => `<div class="buyer"><h4>${esc(b.nombre)} <span class="cname">· ${b.orders.length} ${b.orders.length === 1 ? 'pedido' : 'pedidos'} · ${b.tickets} entradas</span></h4>
+    ${b.orders.map((o) => `<div class="ord"><span class="cname">Pedido ${o.id}</span>${o.attendees.map((a) => `<div class="att"><b>${esc(a.nombre)}</b> <span class="cname">${esc(a.email)}</span><div>${a.tickets.map((t) => `<span class="tk">${esc(t)}</span>`).join('')}</div></div>`).join('')}</div>`).join('')}</div>`).join('')
+    || '<div class="empty">Sin resultados.</div>';
 }
 
 // ---------- Tareas por espectáculo (plantillas) ----------
@@ -870,6 +918,7 @@ document.addEventListener('click', (e) => {
   else if (d.space) run(openDetail('space', d.space));
   else if (d.coRm) { dlgCompanies = dlgCompanies.filter((id) => id !== +d.coRm); renderDlgCompanies(); }
   else if (d.cday) { cocinaDay = d.cday; renderCocina(); }
+  else if (d.tqday) { taqDay = d.tqday; renderTaquilla(); }
   else if (d.dtRm) { const [pid, did] = d.dtRm.split(':').map(Number); const p = cocinaPeople.find((x) => x.id === pid); run(saveDiets(pid, { diet_ids: p.diet_ids.filter((x) => x !== did) })); }
   else if (d.dtSave) run((async () => { const inp = $(`[data-dt-input="${d.dtSave}"]`); const name = inp.value.trim(); if (!name) return; const nd = await newDiet(name); const p = cocinaPeople.find((x) => x.id === +d.dtSave); dtRowOther = null; await saveDiets(p.id, { diet_ids: [...new Set([...p.diet_ids, nd.id])] }); })());
   else if (d.dtCancel) { dtRowOther = null; renderCocina(); }
@@ -1023,6 +1072,11 @@ $('#dt-add-btn').onclick = () => run((async () => {
   await saveDiets(pid, body);
   if (body.diet_ids && p.av[cocinaDay] !== 1) toast(`Guardado. ${p.nombre} no aparece en la lista porque no está el ${cfg.days.find((d) => d.date === cocinaDay).label}.`);
 })());
+$('#tq-table').addEventListener('click', (e) => {
+  const tr = e.target.closest('tr[data-tqshow]'); if (!tr) return;
+  const id = +tr.dataset.tqshow; taqOpen.has(id) ? taqOpen.delete(id) : taqOpen.add(id); renderTaquilla();
+});
+$('#tq-search').oninput = () => { clearTimeout(tqTimer); tqTimer = setTimeout(() => run(searchBuyersUI()), 200); };
 $('#add-person').onclick = () => openPerson(null);
 $('#add-task').onclick = () => openTask(null);
 $('#people-search').oninput = renderPeople;
