@@ -315,7 +315,7 @@ function renderAreaFilter() {
 // ---------- Personas ----------
 function renderPeopleFilter() {
   $('#people-filter').innerHTML = ['CUINA', 'NETEJA', 'BAR', 'TÉCNICA', 'VIDEO', 'TAQUILLA']
-    .map((t) => `<button data-team="${t}" class="${peopleTeams.has(t) ? 'active' : ''}" title="${t}">${TEAM_ICON[t] ? `<i class="ticon" style="--i:url(icons/${TEAM_ICON[t]}.svg)"></i>` : t}</button>`).join('');
+    .map((t) => `<button data-team="${t}" class="${peopleTeams.has(t) ? 'active' : ''}" title="${t} · ⌘/Ctrl + clic: solo este equipo">${TEAM_ICON[t] ? `<i class="ticon" style="--i:url(icons/${TEAM_ICON[t]}.svg)"></i>` : t}</button>`).join('');
 }
 
 const fmtH = (min) => (min / 60).toFixed(2).replace(/\.?0+$/, '').replace('.', ',');
@@ -983,7 +983,10 @@ document.addEventListener('click', (e) => {
   if (d.view) showView(d.view);
   else if (d.day) selectDay(d.day);
   else if (d.area) { areas.has(d.area) ? areas.delete(d.area) : areas.add(d.area); store.set('areas', [...areas]); renderAreaFilter(); renderTasks(); }
-  else if (d.team) { peopleTeams.has(d.team) ? peopleTeams.delete(d.team) : peopleTeams.add(d.team); store.set('peopleTeams', [...peopleTeams]); renderPeopleFilter(); renderPeople(); }
+  else if (d.team) {
+    // ⌘ (o Ctrl) + clic: solo ese equipo; ⌘ + clic otra vez sobre el único activo: vuelven todos.
+    if (e.metaKey || e.ctrlKey) peopleTeams = peopleTeams.size === 1 && peopleTeams.has(d.team) ? new Set() : new Set([d.team]);
+    else peopleTeams.has(d.team) ? peopleTeams.delete(d.team) : peopleTeams.add(d.team); store.set('peopleTeams', [...peopleTeams]); renderPeopleFilter(); renderPeople(); }
   else if (d.rm) { const [t, p] = d.rm.split(':'); run(api(`/api/tasks/${t}/volunteers/${p}`, 'DELETE').then(loadTasks)); }
   else if (d.edit) openTask(tasks.find((t) => t.id === +d.edit));
   else if (d.del) { const t = tasks.find((x) => x.id === +d.del); if (confirm(`¿Eliminar "${t.name}" (${t.start}–${t.end})? Se perderán sus voluntarios asignados.`)) run(api(`/api/tasks/${t.id}`, 'DELETE').then(loadTasks)); }
