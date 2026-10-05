@@ -304,3 +304,8 @@ i.ticon{display:inline-block;width:16px;height:16px;vertical-align:-3px;backgrou
 .chips button i.ticon{width:15px;height:15px;vertical-align:-2px}.chips button.active i.ticon{background:#fff}
 .checks label i.ticon{vertical-align:-3px}
 #people-table thead th:not(.d){padding-left:6px;padding-right:6px;letter-spacing:.02em}
+
+/* En la tabla de Personas los iconos van sueltos, sin recuadro (como ☀ y ☾) */
+.eq.ico{border:0;background:none;padding:0 3px;margin-right:2px;border-radius:0}
+.eq.ico i.ticon{width:18px;height:18px;vertical-align:-4px}
+.eq.ico.NETEJA{color:#2f9e44}.eq.ico.VIDEO{color:#d6336c}

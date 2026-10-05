@@ -9,8 +9,8 @@ const store = {
 // ---------- Equipos ↔ áreas ----------
 const AREA_TEAMS = { cocina: ['CUINA', 'NETEJA'], bar: ['BAR'], tecnica: ['TÉCNICA'], taquilla: ['TAQUILLA'] };
 const STRICT_AREAS = ['taquilla']; // solo personas de su equipo
-// Iconos de los equipos (public/icons/*.svg). Los equipos sin icono (NETEJA, VIDEO…) siguen mostrándose con su nombre.
-const TEAM_ICON = { 'TÉCNICA': 'tecnica', BAR: 'bar', CUINA: 'cocina', TAQUILLA: 'taquilla' };
+// Iconos de los equipos (public/icons/*.svg). Un equipo sin icono sigue mostrándose con su nombre.
+const TEAM_ICON = { 'TÉCNICA': 'tecnica', BAR: 'bar', CUINA: 'cocina', NETEJA: 'limpieza', VIDEO: 'video', TAQUILLA: 'taquilla' };
 const teamChip = (t) => TEAM_ICON[t]
   ? `<span class="eq ico ${esc(t)}" title="${esc(t)}" aria-label="${esc(t)}"><i class="ticon" style="--i:url(icons/${TEAM_ICON[t]}.svg)"></i></span>`
   : `<span class="eq ${esc(t)}">${esc(t)}</span>`;
