@@ -69,3 +69,6 @@ export const MEALS = ['Desayuno', 'Comida', 'Cena'];
 
 // Economía: pago a las compañías, 300 € por integrante y por actuación.
 export const CACHE_PER_MEMBER_CENTS = 30000;
+
+// Disciplinas del programa a las que no se paga a la compañía: el Dinar Popular y "Espais Altres per a un Circ Altre" (xerrada).
+export const SIN_PAGO = ['DINAR', 'XERRADA'];

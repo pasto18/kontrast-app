@@ -1,9 +1,10 @@
 // Economía (versión simple): ingresos y gastos, día a día.
 // Ingresos = lo que corresponde a cada espectáculo de las entradas vendidas (los abonos y combinadas se reparten entre sus espectáculos).
 // Gastos = comida (todas las personas presentes ese día × MEAL_COST_CENTS × número de comidas)
-//        + pago a las compañías (CACHE_PER_MEMBER_CENTS por integrante y por actuación, el día de cada espectáculo).
+//        + pago a las compañías (CACHE_PER_MEMBER_CENTS por integrante y por actuación, el día de cada espectáculo;
+//          el Dinar Popular y la xerrada "Espais Altres per a un Circ Altre" no tienen coste: SIN_PAGO).
 import { db } from './db.js';
-import { DAYS, MEAL_COST_CENTS, MEALS, CACHE_PER_MEMBER_CENTS } from './config.js';
+import { DAYS, MEAL_COST_CENTS, MEALS, CACHE_PER_MEMBER_CENTS, SIN_PAGO } from './config.js';
 import { taquilla } from './entradas.js';
 
 export function economia() {
@@ -13,8 +14,8 @@ export function economia() {
   const companyOf = new Map(db.prepare('SELECT id, company_id FROM shows').all().map((r) => [r.id, r.company_id]));
   const days = DAYS.map((d) => {
     const sh = shows.filter((s) => s.date === d.date).map((s) => {
-      const n = members.get(companyOf.get(s.id)) || 0, cost = n * CACHE_PER_MEMBER_CENTS;
-      return { id: s.id, time: s.time, obra: s.obra, company: s.company, tickets: s.total, revenue_cents: s.revenue_cents, members: n, cost_cents: cost, result_cents: s.revenue_cents - cost };
+      const unpaid = SIN_PAGO.includes(s.discipline), n = members.get(companyOf.get(s.id)) || 0, cost = unpaid ? 0 : n * CACHE_PER_MEMBER_CENTS;
+      return { unpaid, id: s.id, time: s.time, obra: s.obra, company: s.company, tickets: s.total, revenue_cents: s.revenue_cents, members: n, cost_cents: cost, result_cents: s.revenue_cents - cost };
     });
     const income = sh.reduce((n, s) => n + s.revenue_cents, 0);
     const people = present.get(d.date) || 0;
