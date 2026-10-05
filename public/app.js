@@ -706,7 +706,7 @@ async function loadTaquilla() { taq = await api('/api/taquilla'); renderTaquilla
 function renderTaquilla() {
   if (!taq) return;
   const sm = taq.summary;
-  $('#tq-summary').innerHTML = [['entradas', sm.tickets], ['pedidos', sm.orders], ['compradores', sm.buyers], ['asistentes', sm.attendees]]
+  $('#tq-summary').innerHTML = [['entradas', sm.tickets], ['pedidos', sm.orders], ['compradores', sm.buyers], ['asistentes', sm.attendees], ['recaudación total', eur(sm.revenue_cents)]]
     .map(([l, n]) => `<div><b>${n}</b><span>${l}</span></div>`).join('');
   const dates = [...new Set(taq.shows.map((s) => s.date))];
   $('#tq-days').innerHTML = `<button data-tqday="all" class="${taqDay === 'all' ? 'active' : ''}"><small>Todos</small><b>✦</b></button>` + dates.map((d) => { const day = cfg.days.find((x) => x.date === d);
@@ -716,21 +716,53 @@ function renderTaquilla() {
   const max = Math.max(1, ...taq.shows.map((s) => s.total));
   let lastDate = null, html = '';
   for (const s of shows) {
-    if (taqDay === 'all' && s.date !== lastDate) { html += `<tr class="dayh"><td colspan="6">${esc(fmtDay(s.date))}</td></tr>`; lastDate = s.date; }
+    if (taqDay === 'all' && s.date !== lastDate) { html += `<tr class="dayh"><td colspan="7">${esc(fmtDay(s.date))}</td></tr>`; lastDate = s.date; }
     const open = taqOpen.has(s.id);
     html += `<tr class="show${s.total ? '' : ' zero'}" data-tqshow="${s.id}"><td>${s.time}</td><td><b>${esc(s.obra)}</b><div class="cname">${esc(s.company)} · ${esc(s.venue)}</div></td>
       <td class="num tot">${s.total}<div class="tq-bar" title="${s.sueltas} sueltas · ${s.abonos} abonos"><i class="s" style="width:${(s.sueltas / max) * 100}%"></i><i class="a" style="width:${(s.abonos / max) * 100}%"></i></div></td>
-      <td class="num kind-e">${s.sueltas}</td><td class="num kind-a">${s.abonos}</td><td>${s.total ? (open ? '▾' : '▸') : ''}</td></tr>`;
-    if (open && s.total) html += `<tr class="detail"><td colspan="6"><table class="dt"><thead><tr><th>Tipo de entrada</th><th>Clase</th><th class="num">Vendidas</th></tr></thead><tbody>${s.types.map((x) => { const t = tn[x.id];
-      return `<tr><td>${esc(t.tipologia)}</td><td class="kind-${t.kind[0]}">${KIND_LABEL[t.kind]}</td><td class="num"><b>${x.count}</b></td></tr>`; }).join('')}</tbody></table></td></tr>`;
+      <td class="num kind-e">${s.sueltas}</td><td class="num kind-a">${s.abonos}</td>
+      <td class="num tot">${s.total ? eur(s.revenue_cents) : ''}${s.total ? `<div class="cname">sueltas ${eur(s.revenue_sueltas_cents)} · abonos ${eur(s.revenue_abonos_cents)}</div>` : ''}</td><td>${s.total ? (open ? '▾' : '▸') : ''}</td></tr>`;
+    if (open && s.total) html += `<tr class="detail"><td colspan="7"><table class="dt"><thead><tr><th>Tipo de entrada</th><th>Clase</th><th class="num">Vendidas</th><th class="num">Precio</th><th class="num" title="Lo que corresponde a este espectáculo: precio ÷ nº de espectáculos a los que da acceso la entrada">Parte para este espectáculo</th><th class="num">Recaudación</th></tr></thead><tbody>${s.types.map((x) => { const t = tn[x.id];
+      return `<tr><td>${esc(t.tipologia)}</td><td class="kind-${t.kind[0]}">${KIND_LABEL[t.kind]}</td><td class="num"><b>${x.count}</b></td><td class="num">${eur(t.price_cents)}</td>
+        <td class="num">${t.n_shows > 1 ? `${eur(t.price_cents)} ÷ ${t.n_shows} = ${eur(Math.round(t.price_cents / t.n_shows))}` : eur(t.price_cents)}</td><td class="num"><b>${eur(x.amount_cents)}</b></td></tr>`; }).join('')}
+      <tr><td colspan="5" style="text-align:right">Total</td><td class="num"><b>${eur(s.revenue_cents)}</b></td></tr></tbody></table></td></tr>`;
   }
-  $('#tq-table').innerHTML = `<thead><tr><th>Hora</th><th>Espectáculo</th><th class="num">Entradas vendidas</th><th class="num" title="Entradas sueltas (incluye las combinadas con el dinar)">Sueltas</th><th class="num" title="Abonos de día o de fin de semana que dan acceso a este espectáculo">Abonos</th><th></th></tr></thead><tbody>${html || '<tr><td colspan="6" class="empty">No hay espectáculos ese día.</td></tr>'}</tbody>`;
+  $('#tq-table').innerHTML = `<thead><tr><th>Hora</th><th>Espectáculo</th><th class="num">Entradas vendidas</th><th class="num" title="Entradas sueltas (incluye las combinadas con el dinar)">Sueltas</th><th class="num" title="Abonos de día o de fin de semana que dan acceso a este espectáculo">Abonos</th><th class="num" title="Entradas sueltas completas + parte proporcional de los abonos y combinadas (precio ÷ nº de espectáculos)">Recaudación</th><th></th></tr></thead><tbody>${html || '<tr><td colspan="7" class="empty">No hay espectáculos ese día.</td></tr>'}</tbody>`;
 
   $('#tq-types-count').textContent = `(${taq.types.length})`;
   const sname = (id) => { const s = taq.shows.find((x) => x.id === id); return `${s.obra} (${fmtDay(s.date).replace(/^\S+ /, '')} ${s.time})`; };
-  $('#tq-types').innerHTML = `<thead><tr><th>Tipo de entrada</th><th>Clase</th><th class="num">Precio</th><th class="num">Vendidas</th><th>Da acceso a</th></tr></thead><tbody>${taq.types.map((t) =>
-    `<tr><td>${esc(t.name)}</td><td class="kind-${t.kind[0]}">${KIND_LABEL[t.kind]}</td><td class="num">${eur(t.price_cents)}</td><td class="num"><b>${t.count}</b></td>
-      <td>${t.show_ids.length ? t.show_ids.map(sname).map(esc).join(' · ') : '<span style="color:var(--bad)">sin espectáculo asociado</span>'}</td></tr>`).join('')}</tbody>`;
+  $('#tq-types').innerHTML = `<thead><tr><th>Tipo de entrada</th><th>Clase</th><th class="num">Precio</th><th class="num">Vendidas</th><th class="num" title="Espectáculos a los que da acceso">Espect.</th><th class="num" title="Lo que se reparte a cada espectáculo: precio ÷ nº de espectáculos">Reparto por espectáculo</th><th class="num">Recaudación</th><th>Da acceso a</th><th></th></tr></thead><tbody>${taq.types.map((t) =>
+    `<tr><td>${esc(t.name)}</td><td class="kind-${t.kind[0]}">${KIND_LABEL[t.kind]}</td><td class="num">${eur(t.price_cents)}</td><td class="num"><b>${t.count}</b></td><td class="num">${t.n_shows}</td>
+      <td class="num">${t.n_shows ? (t.n_shows > 1 ? `${eur(t.price_cents)} ÷ ${t.n_shows} = ${eur(Math.round(t.price_cents / t.n_shows))}` : eur(t.price_cents)) : ''}</td><td class="num"><b>${eur(t.revenue_cents)}</b></td>
+      <td>${t.show_ids.length ? t.show_ids.map(sname).map(esc).join(' · ') : '<span style="color:var(--bad)">sin espectáculo asociado</span>'}</td>
+      <td>${t.count ? `<button data-tktype="${t.id}" title="Ver cada entrada y cómo se reparte su precio">Ver entradas</button>` : ''}</td></tr>`).join('')}</tbody>`;
+}
+
+// Entradas de un tipo y reparto de cada una (para revisar la división de los abonos).
+async function openTicketType(id) {
+  const r = await api(`/api/ticket-types/${id}/tickets`), t = r.type;
+  const n = r.tickets[0]?.allocations.length || 0;
+  $('#detail-title').textContent = t.tipologia;
+  $('#detail-sub').textContent = `${r.tickets.length} entradas · ${eur(t.price_cents)} cada una${n > 1 ? ` · se reparte entre ${n} espectáculos` : ''}`;
+  $('#detail-body').innerHTML = `<div class="table-wrap"><table class="dt"><thead><tr><th class="num">Nº</th><th>Asistente</th><th>Comprador</th><th class="num">Pedido</th><th>Reparto</th><th></th></tr></thead><tbody>${r.tickets.map((k) =>
+    `<tr><td class="num">${k.no ?? ''}</td><td><b>${esc(k.attendee)}</b></td><td>${esc(k.buyer)}</td><td class="num">${k.order_id}</td>
+      <td>${k.allocations.length > 1 ? `${eur(t.price_cents)} ÷ ${k.allocations.length} espectáculos` : k.allocations.length ? 'todo a su espectáculo' : '—'}</td>
+      <td><button data-tkprofile="${k.id}:${t.id}">Ver reparto</button></td></tr>`).join('')}</tbody></table></div>`;
+  $('#detail-dialog').showModal();
+}
+
+// Perfil de una entrada: a quién pertenece y cuánto va a cada espectáculo.
+async function openTicketProfile(ticketId, typeId) {
+  const r = await api(`/api/ticket-types/${typeId}/tickets`), t = r.type, k = r.tickets.find((x) => x.id === ticketId);
+  const sum = k.allocations.reduce((n, a) => n + a.amount_cents, 0);
+  $('#detail-title').textContent = `Entrada nº ${k.no ?? k.id} · ${t.name}`;
+  $('#detail-sub').textContent = `${k.attendee} · comprador: ${k.buyer} · pedido ${k.order_id} · ${eur(t.price_cents)}`;
+  $('#detail-body').innerHTML = `<p class="hint"><button data-tktype="${t.id}">‹ Volver a las entradas de este tipo</button></p>
+    <div class="table-wrap"><table class="dt"><thead><tr><th>Día</th><th>Hora</th><th>Espectáculo</th><th class="num">Importe</th></tr></thead><tbody>${k.allocations.map((a) =>
+      `<tr><td>${esc(fmtDay(a.date))}</td><td>${a.time}</td><td>${esc(a.obra)}</td><td class="num"><b>${eur(a.amount_cents)}</b></td></tr>`).join('')}
+      <tr><td colspan="3" style="text-align:right">Suma del reparto${sum === t.price_cents ? ' (= precio de la entrada)' : ' ⚠ distinto del precio'}</td><td class="num"><b>${eur(sum)}</b></td></tr></tbody></table></div>
+    <p class="hint">${k.allocations.length > 1 ? `${eur(t.price_cents)} ÷ ${k.allocations.length} espectáculos = ${eur(Math.floor(t.price_cents / k.allocations.length))} cada uno; los céntimos que sobran se dan de uno en uno a los primeros espectáculos.` : 'Entrada suelta: todo el importe va a su espectáculo.'}</p>`;
+  $('#detail-dialog').showModal();
 }
 
 let tqTimer = null;
@@ -919,6 +951,8 @@ document.addEventListener('click', (e) => {
   else if (d.coRm) { dlgCompanies = dlgCompanies.filter((id) => id !== +d.coRm); renderDlgCompanies(); }
   else if (d.cday) { cocinaDay = d.cday; renderCocina(); }
   else if (d.tqday) { taqDay = d.tqday; renderTaquilla(); }
+  else if (d.tktype) run(openTicketType(+d.tktype));
+  else if (d.tkprofile) { const [k, t] = d.tkprofile.split(':').map(Number); run(openTicketProfile(k, t)); }
   else if (d.dtRm) { const [pid, did] = d.dtRm.split(':').map(Number); const p = cocinaPeople.find((x) => x.id === pid); run(saveDiets(pid, { diet_ids: p.diet_ids.filter((x) => x !== did) })); }
   else if (d.dtSave) run((async () => { const inp = $(`[data-dt-input="${d.dtSave}"]`); const name = inp.value.trim(); if (!name) return; const nd = await newDiet(name); const p = cocinaPeople.find((x) => x.id === +d.dtSave); dtRowOther = null; await saveDiets(p.id, { diet_ids: [...new Set([...p.diet_ids, nd.id])] }); })());
   else if (d.dtCancel) { dtRowOther = null; renderCocina(); }

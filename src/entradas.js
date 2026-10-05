@@ -46,6 +46,14 @@ CREATE TABLE IF NOT EXISTS tickets (
   attendee_id INTEGER NOT NULL REFERENCES attendees(id) ON DELETE CASCADE,
   ticket_type_id INTEGER NOT NULL REFERENCES ticket_types(id) ON DELETE CASCADE
 );
+-- Reparto de lo pagado por cada entrada entre los espectáculos a los que da acceso (una fila por entrada y espectáculo).
+CREATE TABLE IF NOT EXISTS ticket_allocations (
+  ticket_id INTEGER NOT NULL REFERENCES tickets(id) ON DELETE CASCADE,
+  show_id INTEGER NOT NULL REFERENCES shows(id) ON DELETE CASCADE,
+  amount_cents INTEGER NOT NULL,
+  PRIMARY KEY (ticket_id, show_id)
+);
+CREATE INDEX IF NOT EXISTS alloc_show ON ticket_allocations(show_id);
 CREATE INDEX IF NOT EXISTS tickets_type ON tickets(ticket_type_id);
 CREATE INDEX IF NOT EXISTS tickets_order ON tickets(order_id);
 `);
@@ -115,7 +123,7 @@ export function importEntradas(csvPath, { transaction = true } = {}) {
 
   if (transaction) db.exec('BEGIN');
   try {
-    for (const t of ['tickets', 'attendees', 'orders', 'buyers', 'ticket_type_shows', 'ticket_types']) db.exec(`DELETE FROM ${t}`);
+    for (const t of ['ticket_allocations', 'tickets', 'attendees', 'orders', 'buyers', 'ticket_type_shows', 'ticket_types']) db.exec(`DELETE FROM ${t}`);
     const insType = db.prepare('INSERT INTO ticket_types (tipologia, name, price_cents, kind) VALUES (?,?,?,?)');
     const insBuyer = db.prepare('INSERT INTO buyers (nombre, nombre_key) VALUES (?,?)');
     const insOrder = db.prepare('INSERT INTO orders (id, buyer_id, order_name, order_surname) VALUES (?,?,?,?)');
@@ -159,9 +167,28 @@ export function importEntradas(csvPath, { transaction = true } = {}) {
       if (!rule) { sinMapa.add(t.tip); continue; }
       for (const s of shows) if (rule[1].some((d) => s.date === D(d)) && ticketed.has(s.id) && !rule[2].some((re) => re.test(s.obra))) link.run(t.id, s.id);
     }
+    computeAllocations();
     if (transaction) db.exec('COMMIT');
     return { tickets: lines.length - 1, types: types.size, orders: orders.size, buyers: buyers.size, attendees: atts.size, sinMapa: [...sinMapa] };
   } catch (e) { if (transaction) db.exec('ROLLBACK'); throw e; }
+}
+
+// Reparte el precio de cada entrada a partes iguales entre los espectáculos a los que da acceso
+// (una entrada suelta: todo para su espectáculo; combinada o abono: precio ÷ nº de espectáculos).
+// Los céntimos sobrantes se dan de uno en uno a los primeros espectáculos, para que la suma sea exactamente el precio.
+export function computeAllocations() {
+  db.exec('DELETE FROM ticket_allocations');
+  const showsOf = new Map();
+  for (const r of db.prepare(`SELECT l.ticket_type_id, l.show_id FROM ticket_type_shows l JOIN shows s ON s.id = l.show_id ORDER BY s.date, s.time, s.id`).all())
+    (showsOf.get(r.ticket_type_id) || showsOf.set(r.ticket_type_id, []).get(r.ticket_type_id)).push(r.show_id);
+  const price = new Map(db.prepare('SELECT id, price_cents FROM ticket_types').all().map((t) => [t.id, t.price_cents]));
+  const ins = db.prepare('INSERT INTO ticket_allocations (ticket_id, show_id, amount_cents) VALUES (?,?,?)');
+  for (const t of db.prepare('SELECT id, ticket_type_id FROM tickets').all()) {
+    const ss = showsOf.get(t.ticket_type_id) || [], p = price.get(t.ticket_type_id);
+    if (!ss.length || p == null) continue;
+    const base = Math.floor(p / ss.length), rest = p - base * ss.length;
+    ss.forEach((sid, i) => ins.run(t.id, sid, base + (i < rest ? 1 : 0)));
+  }
 }
 
 // Primera carga automática desde data/seed/entradas.csv (una sola vez; para recargar: npm run import-entradas -- archivo.csv).
@@ -171,6 +198,8 @@ export function seedEntradasIfNeeded(csvPath) {
     const r = importEntradas(csvPath, { transaction: false }); // applySeed ya abre su propia transacción
     if (r.sinMapa.length) console.warn(`Entradas sin espectáculo asociado: ${r.sinMapa.join(' | ')}`);
   });
+  // Bases cargadas antes de existir el reparto de la recaudación.
+  applySeed('entradas-reparto-v1', () => { if (db.prepare('SELECT COUNT(*) n FROM tickets').get().n) computeAllocations(); });
 }
 
 // ---- Consultas ----
@@ -181,19 +210,40 @@ export function taquilla() {
   const cover = new Map();
   for (const r of db.prepare('SELECT ticket_type_id, show_id FROM ticket_type_shows').all()) (cover.get(r.ticket_type_id) || cover.set(r.ticket_type_id, []).get(r.ticket_type_id)).push(r.show_id);
   const byType = new Map(types.map((t) => [t.id, t]));
-  const per = new Map();
-  for (const r of db.prepare('SELECT show_id, ticket_type_id FROM ticket_type_shows').all()) (per.get(r.show_id) || per.set(r.show_id, []).get(r.show_id)).push(r.ticket_type_id);
+  // recaudación (reparto) por espectáculo y tipo de entrada
+  const money = new Map();
+  for (const r of db.prepare(`SELECT ta.show_id, t.ticket_type_id, COUNT(*) AS n, SUM(ta.amount_cents) AS cents
+    FROM ticket_allocations ta JOIN tickets t ON t.id = ta.ticket_id GROUP BY ta.show_id, t.ticket_type_id`).all())
+    (money.get(r.show_id) || money.set(r.show_id, []).get(r.show_id)).push({ id: r.ticket_type_id, count: r.n, amount_cents: r.cents });
   const shows = db.prepare(`SELECT s.*, c.name AS company FROM shows s JOIN companies c ON c.id = s.company_id ORDER BY s.date, s.time`).all().map((s) => {
-    const ts = (per.get(s.id) || []).map((id) => ({ id, count: byType.get(id).count })).filter((x) => x.count);
-    const sum = (f) => ts.filter((x) => f(byType.get(x.id))).reduce((n, x) => n + x.count, 0);
+    const ts = (money.get(s.id) || []).sort((a, b) => b.amount_cents - a.amount_cents);
+    const sum = (f, k) => ts.filter((x) => f(byType.get(x.id))).reduce((n, x) => n + x[k], 0);
     return { id: s.id, date: s.date, time: s.time, obra: s.obra, company: s.company, venue: s.venue, discipline: s.discipline,
-      total: sum(() => true), sueltas: sum((t) => t.kind !== 'abono'), abonos: sum((t) => t.kind === 'abono'), types: ts.sort((a, b) => b.count - a.count) };
+      total: sum(() => true, 'count'), sueltas: sum((t) => t.kind !== 'abono', 'count'), abonos: sum((t) => t.kind === 'abono', 'count'),
+      revenue_cents: sum(() => true, 'amount_cents'), revenue_sueltas_cents: sum((t) => t.kind !== 'abono', 'amount_cents'), revenue_abonos_cents: sum((t) => t.kind === 'abono', 'amount_cents'),
+      types: ts };
   });
+  const total = db.prepare('SELECT COALESCE(SUM(tt.price_cents), 0) AS c FROM tickets t JOIN ticket_types tt ON tt.id = t.ticket_type_id').get().c;
+  const allocated = db.prepare('SELECT COALESCE(SUM(amount_cents), 0) AS c FROM ticket_allocations').get().c;
   return {
-    summary: { tickets: count('tickets'), orders: count('orders'), buyers: count('buyers'), attendees: count('attendees') },
-    types: types.map((t) => ({ ...t, show_ids: cover.get(t.id) || [] })),
+    summary: { tickets: count('tickets'), orders: count('orders'), buyers: count('buyers'), attendees: count('attendees'), revenue_cents: total, allocated_cents: allocated },
+    types: types.map((t) => { const ids = cover.get(t.id) || []; return { ...t, show_ids: ids, n_shows: ids.length, revenue_cents: (t.price_cents ?? 0) * t.count }; }),
     shows,
   };
+}
+
+// Entradas de un tipo (p. ej. un abono), cada una con su reparto entre espectáculos, para poder revisar la división.
+export function ticketsOfType(typeId) {
+  const type = db.prepare('SELECT * FROM ticket_types WHERE id = ?').get(typeId);
+  if (!type) return null;
+  const rows = db.prepare(`SELECT t.id, t.no, t.order_id, b.nombre AS buyer, a.nombre AS attendee, a.email
+    FROM tickets t JOIN orders o ON o.id = t.order_id JOIN buyers b ON b.id = o.buyer_id JOIN attendees a ON a.id = t.attendee_id
+    WHERE t.ticket_type_id = ? ORDER BY a.nombre, t.id`).all(typeId);
+  const al = new Map();
+  for (const r of db.prepare(`SELECT ta.ticket_id, ta.show_id, ta.amount_cents, s.date, s.time, s.obra FROM ticket_allocations ta
+    JOIN tickets t ON t.id = ta.ticket_id JOIN shows s ON s.id = ta.show_id WHERE t.ticket_type_id = ? ORDER BY s.date, s.time`).all(typeId))
+    (al.get(r.ticket_id) || al.set(r.ticket_id, []).get(r.ticket_id)).push({ show_id: r.show_id, obra: r.obra, date: r.date, time: r.time, amount_cents: r.amount_cents });
+  return { type, tickets: rows.map((t) => ({ ...t, allocations: al.get(t.id) || [] })) };
 }
 
 // Compradores y asistentes por nombre o correo: cada comprador con sus pedidos, los asistentes de cada pedido y las entradas de cada uno.
