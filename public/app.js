@@ -9,6 +9,12 @@ const store = {
 // ---------- Equipos ↔ áreas ----------
 const AREA_TEAMS = { cocina: ['CUINA', 'NETEJA'], bar: ['BAR'], tecnica: ['TÉCNICA'], taquilla: ['TAQUILLA'] };
 const STRICT_AREAS = ['taquilla']; // solo personas de su equipo
+// Iconos de los equipos (public/icons/*.svg). Los equipos sin icono (NETEJA, VIDEO…) siguen mostrándose con su nombre.
+const TEAM_ICON = { 'TÉCNICA': 'tecnica', BAR: 'bar', CUINA: 'cocina', TAQUILLA: 'taquilla' };
+const teamChip = (t) => TEAM_ICON[t]
+  ? `<span class="eq ico ${esc(t)}" title="${esc(t)}" aria-label="${esc(t)}"><i class="ticon" style="--i:url(icons/${TEAM_ICON[t]}.svg)"></i></span>`
+  : `<span class="eq ${esc(t)}">${esc(t)}</span>`;
+const teamLabel = (t) => (TEAM_ICON[t] ? `<i class="ticon" style="--i:url(icons/${TEAM_ICON[t]}.svg)"></i> ` : '') + esc(t);
 const teamsOf = (p) => p.equipo.split(',').map((s) => s.trim()).filter(Boolean);
 const fitsArea = (p, area) => teamsOf(p).some((t) => AREA_TEAMS[area].includes(t));
 
@@ -305,7 +311,7 @@ function renderAreaFilter() {
 // ---------- Personas ----------
 function renderPeopleFilter() {
   $('#people-filter').innerHTML = ['CUINA', 'NETEJA', 'BAR', 'TÉCNICA', 'VIDEO', 'TAQUILLA']
-    .map((t) => `<button data-team="${t}" class="${peopleTeams.has(t) ? 'active' : ''}">${t}</button>`).join('');
+    .map((t) => `<button data-team="${t}" class="${peopleTeams.has(t) ? 'active' : ''}" title="${t}">${TEAM_ICON[t] ? `<i class="ticon" style="--i:url(icons/${TEAM_ICON[t]}.svg)"></i>` : t}</button>`).join('');
 }
 
 const fmtH = (min) => (min / 60).toFixed(2).replace(/\.?0+$/, '').replace('.', ',');
@@ -404,7 +410,7 @@ function renderPeople(force = false) {
   $('#people-table').innerHTML = head + '<tbody>' + tot + list.map((p) => `<tr data-id="${p.id}">
     <td class="ed" data-field="nombre"><button class="mini" data-ptasks="${p.id}" title="Ver las tareas asignadas a esta persona">Ver tareas</button> <b>${esc(p.nombre)}</b>${p.por_confirmar ? ' <span class="conf">POR CONFIRMAR</span>' : ''}</td>
     <td class="ed" data-field="grupo" title="${esc(p.grupo)}">${esc(GRUPO_CORTO[p.grupo] || p.grupo)}</td>
-    <td class="ed" data-field="equipo">${teamsOf(p).map((t) => `<span class="eq ${esc(t)}">${esc(t)}</span>`).join('') || '<span class="hint">—</span>'}</td>
+    <td class="ed" data-field="equipo">${teamsOf(p).map(teamChip).join('') || '<span class="hint">—</span>'}</td>
     <td class="ed hzc" data-field="horario" title="${HORARIO_ICON[p.horario || 'indiferente'][1]}">${HORARIO_ICON[p.horario || 'indiferente'][0]}</td>
     <td class="aptc">${personSkillCell(p)}</td>
     <td class="balc">${balanceCell(p)}</td>
@@ -440,7 +446,7 @@ function startPersonEdit(id, field, host) {
   if (field === 'equipo') {
     const teams = [...new Set([...DEFAULT_TEAMS, ...people.flatMap(teamsOf)])], mine = teamsOf(p);
     el = mk('div', { className: 'eq-edit' });
-    el.innerHTML = teams.map((t) => `<label><input type="checkbox" value="${esc(t)}" ${mine.includes(t) ? 'checked' : ''}> ${esc(t)}</label>`).join('');
+    el.innerHTML = teams.map((t) => `<label><input type="checkbox" value="${esc(t)}" ${mine.includes(t) ? 'checked' : ''}> ${teamLabel(t)}</label>`).join('');
   } else if (field === 'grupo' || field === 'horario') {
     el = mk('select');
     const opts = field === 'horario' ? [['indiferente', 'Indiferente'], ['madrugador', 'Madrugadorx'], ['trasnochador', 'Trasnochadorx']]
@@ -891,7 +897,7 @@ function openPerson(p) {
   pform.elements.grupo.innerHTML = groups.map((g) => `<option>${esc(g)}</option>`).join('');
   const teams = [...new Set([...DEFAULT_TEAMS, ...people.flatMap(teamsOf)])];
   const mine = p ? teamsOf(p) : [];
-  $('#person-teams').innerHTML = teams.map((t) => `<label><input type="checkbox" value="${esc(t)}" ${mine.includes(t) ? 'checked' : ''}> ${esc(t)}</label>`).join('');
+  $('#person-teams').innerHTML = teams.map((t) => `<label><input type="checkbox" value="${esc(t)}" ${mine.includes(t) ? 'checked' : ''}> ${teamLabel(t)}</label>`).join('');
   const v = p || { nombre: '', grupo: 'VOLUNTARIAS', aptitudes: '', por_confirmar: 0, skill_ids: [], av: {} };
   pform.elements.nombre.value = v.nombre;
   pform.elements.grupo.value = v.grupo || 'VOLUNTARIAS';
@@ -1073,7 +1079,7 @@ async function openCandidates(taskId) {
   $('#detail-body').innerHTML = (r.candidates.length
     ? `<p class="cand-note">Personas disponibles ese día, del equipo ${t.uncovered.length ? `y con la aptitud que falta (${esc(t.uncovered.join(', '))}) ` : ''}que aún no están en esta tarea.${t.skills.length && !t.uncovered.length ? ' La aptitud pedida ya la aporta alguien de la tarea.' : ''}</p>
       <div class="table-wrap"><table><thead><tr><th>Persona</th><th>Estado</th><th>Qué hace ese día</th><th class="num">Horas</th><th></th></tr></thead><tbody>${r.candidates.map((c) => `<tr>
-        <td><b>${esc(c.nombre)}</b>${c.horario_mismatch ? ' <span class="cst-hz" title="No es el momento del día apropiado para esta persona">⏰ horario</span>' : ''}<div>${c.teams.map((x) => `<span class="eq">${esc(x)}</span>`).join('')}${c.skills.map((x) => `<span class="apt">${esc(x)}</span>`).join('')}</div></td>
+        <td><b>${esc(c.nombre)}</b>${c.horario_mismatch ? ' <span class="cst-hz" title="No es el momento del día apropiado para esta persona">⏰ horario</span>' : ''}<div>${c.teams.map(teamChip).join('')}${c.skills.map((x) => `<span class="apt">${esc(x)}</span>`).join('')}</div></td>
         <td><span class="cst ${c.status}">${{ libre: 'Libre', solape: 'Ocupada/o a esa hora', tope: `Pasaría de ${h(c.cap)} h` }[c.status]}</span>${c.status === 'solape' && c.over ? `<div class="hint">y además pasaría de ${h(c.cap)} h</div>` : ''}</td>
         <td>${c.blockers.length ? c.blockers.map(busy).join('') : c.tasks.length ? c.tasks.map(busy).join('') : '<span class="hint">Sin tareas ese día</span>'}</td>
         <td class="num">${h(c.minutes)} h → ${h(c.minutes + t.duration)} h</td>

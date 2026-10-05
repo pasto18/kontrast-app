@@ -295,3 +295,12 @@ details.tq-types{margin:14px 0}details.tq-types summary{cursor:pointer;font-weig
 .eco-card .money-neg{color:var(--bad)}.eco-card .money-pos{color:var(--ok)}
 #eco-all td,#eco-all th{white-space:nowrap}
 button.linklike{border:0;background:none;padding:0;color:var(--accent);text-decoration:underline;cursor:pointer}
+
+/* Iconos de equipo: la forma viene de public/icons/*.svg y toma el color del texto */
+i.ticon{display:inline-block;width:16px;height:16px;vertical-align:-3px;background:currentColor;
+  -webkit-mask:var(--i) center/contain no-repeat;mask:var(--i) center/contain no-repeat}
+.eq.ico{padding:1px 4px;line-height:1}.eq.ico i.ticon{vertical-align:-3px}
+.eq.ico.TÉCNICA{color:#0b7285}.eq.ico.BAR{color:#7048e8}.eq.ico.CUINA{color:#c2410c}.eq.ico.TAQUILLA{color:#b08900}
+.chips button i.ticon{width:15px;height:15px;vertical-align:-2px}.chips button.active i.ticon{background:#fff}
+.checks label i.ticon{vertical-align:-3px}
+#people-table thead th:not(.d){padding-left:6px;padding-right:6px;letter-spacing:.02em}
