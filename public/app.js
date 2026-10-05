@@ -14,6 +14,10 @@ const TEAM_ICON = { 'TÉCNICA': 'tecnica', BAR: 'bar', CUINA: 'cocina', NETEJA: 
 const teamChip = (t) => TEAM_ICON[t]
   ? `<span class="eq ico ${esc(t)}" title="${esc(t)}" aria-label="${esc(t)}"><i class="ticon" style="--i:url(icons/${TEAM_ICON[t]}.svg)"></i></span>`
   : `<span class="eq ${esc(t)}">${esc(t)}</span>`;
+// El equipo se muestra en casillas fijas (una por equipo, siempre en el mismo orden) para que cada icono caiga en el mismo sitio en todas las filas.
+const TEAM_ORDER = ['CUINA', 'NETEJA', 'BAR', 'TÉCNICA', 'VIDEO', 'TAQUILLA'];
+const teamSlots = (p) => { const mine = teamsOf(p);
+  return `<span class="eqslots">${TEAM_ORDER.map((t) => `<span class="slotc">${mine.includes(t) ? teamChip(t) : ''}</span>`).join('')}</span>${mine.filter((t) => !TEAM_ORDER.includes(t)).map(teamChip).join('')}`; };
 const teamLabel = (t) => (TEAM_ICON[t] ? `<i class="ticon" style="--i:url(icons/${TEAM_ICON[t]}.svg)"></i> ` : '') + esc(t);
 const teamsOf = (p) => p.equipo.split(',').map((s) => s.trim()).filter(Boolean);
 const fitsArea = (p, area) => teamsOf(p).some((t) => AREA_TEAMS[area].includes(t));
@@ -403,14 +407,14 @@ function renderPeople(force = false) {
   const present = (p) => days.filter((d) => p.av[d.date] === 1).length;
   sortPeople(list, present);
   const th = (key, label, attrs = '', cls = '') => `<th class="sortable ${cls}" data-sort="${key}" ${attrs}>${label}${sortArrow(key)}</th>`;
-  const head = `<thead><tr>${th('nombre', 'Nombre')}${th('grupo', 'Grupo')}${th('equipo', 'Equipo')}${th('horario', 'Horario', 'title="Horario preferido: ☀ madrugadorx, ☾ trasnochadorx, – indiferente. Orden: madrugadorx, indiferente, trasnochadorx"')}${th('aptitudes', 'Aptitudes')}${th('balance', 'Balance', 'title="Horas de más en Técnica (T) o en Bar/Cocina/Limpieza (B/C). Solo para quien está en ambos grupos. Orden: más desbalance primero"')}${th('dias', 'Días', 'title="Días presentes en el festival. Orden: más días primero"', 'num')}
+  const head = `<thead><tr>${th('nombre', 'Nombre')}${th('grupo', 'Grupo')}${th('equipo', `Equipo<span class="eqslots eqhead">${TEAM_ORDER.map((t) => `<span class="slotc" title="${t}"><i class="ticon" style="--i:url(icons/${TEAM_ICON[t]}.svg)"></i></span>`).join('')}</span>`)}${th('horario', 'Horario', 'title="Horario preferido: ☀ madrugadorx, ☾ trasnochadorx, – indiferente. Orden: madrugadorx, indiferente, trasnochadorx"')}${th('aptitudes', 'Aptitudes')}${th('balance', 'Balance', 'title="Horas de más en Técnica (T) o en Bar/Cocina/Limpieza (B/C). Solo para quien está en ambos grupos. Orden: más desbalance primero"')}${th('dias', 'Días', 'title="Días presentes en el festival. Orden: más días primero"', 'num')}
     ${days.map((d) => `<th class="d sortable" data-sort="day:${d.date}" title="${d.label}: ${loadMode ? 'más horas primero' : 'presentes primero'}">${d.dow.slice(0, 1).toUpperCase()}<br>${d.day}${sortArrow('day:' + d.date)}</th>`).join('')}${th('prom', 'Prom./día', 'title="Horas trabajadas por día de estadía, hasta la fecha del reloj. Orden: más horas primero"', 'num')}<th></th></tr></thead>`;
   const tot = `<tr class="tot"><td colspan="7" style="text-align:right">Personas presentes cada día (lista filtrada)</td>
     ${days.map((d) => `<td>${list.filter((p) => p.av[d.date] === 1).length}</td>`).join('')}<td></td><td></td></tr>`;
   $('#people-table').innerHTML = head + '<tbody>' + tot + list.map((p) => `<tr data-id="${p.id}">
     <td class="ed" data-field="nombre"><button class="mini" data-ptasks="${p.id}" title="Ver las tareas asignadas a esta persona">Ver tareas</button> <b>${esc(p.nombre)}</b>${p.por_confirmar ? ' <span class="conf">POR CONFIRMAR</span>' : ''}</td>
     <td class="ed" data-field="grupo" title="${esc(p.grupo)}">${esc(GRUPO_CORTO[p.grupo] || p.grupo)}</td>
-    <td class="ed" data-field="equipo">${teamsOf(p).map(teamChip).join('') || '<span class="hint">—</span>'}</td>
+    <td class="ed" data-field="equipo">${teamSlots(p)}</td>
     <td class="ed hzc" data-field="horario" title="${HORARIO_ICON[p.horario || 'indiferente'][1]}">${HORARIO_ICON[p.horario || 'indiferente'][0]}</td>
     <td class="aptc">${personSkillCell(p)}</td>
     <td class="balc">${balanceCell(p)}</td>

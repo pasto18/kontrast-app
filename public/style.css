@@ -230,7 +230,7 @@ tr.focus td{animation:focusBg 1.2s ease-in-out 6}
 #people-table td,#tasks-table td{white-space:normal;overflow:hidden}
 #people-table td.balc,#people-table td.num,#people-table td.hzc,#tasks-table td.tm,#tasks-table td.nec,#tasks-table td.est,#tasks-table td.acts{white-space:nowrap}
 #view-personas .table-wrap{overflow:clip;max-height:none}  /* sin barras de scroll propias: la cabecera fija se pega a la barra superior de la página */
-#people-table th:nth-child(1){width:17%}#people-table th:nth-child(2){width:66px}#people-table th:nth-child(3){width:15%}
+#people-table th:nth-child(1){width:17%}#people-table th:nth-child(2){width:66px}#people-table th:nth-child(3){width:150px}
 #people-table th:nth-child(4){width:78px}#people-table th:nth-child(5){width:14%}#people-table th:nth-child(6){width:84px}
 #people-table th:nth-child(7){width:48px}#people-table th:nth-child(n+8):nth-child(-n+21){width:36px}
 #people-table th:nth-child(22){width:86px}#people-table th:nth-child(23){width:46px}
@@ -309,3 +309,9 @@ i.ticon{display:inline-block;width:16px;height:16px;vertical-align:-3px;backgrou
 .eq.ico{border:0;background:none;padding:0 3px;margin-right:2px;border-radius:0}
 .eq.ico i.ticon{width:18px;height:18px;vertical-align:-4px}
 .eq.ico.NETEJA{color:#2f9e44}.eq.ico.VIDEO{color:#d6336c}
+
+/* Equipo: una casilla fija por equipo */
+.eqslots{display:inline-grid;grid-template-columns:repeat(6,23px);vertical-align:middle}
+.eqslots .slotc{display:flex;justify-content:center;align-items:center;height:22px}
+.eqslots .eq.ico{margin:0;padding:0}
+.eqhead{display:grid;margin-top:2px;color:var(--mute)}.eqhead .slotc{height:16px}.eqhead i.ticon{width:14px;height:14px}
