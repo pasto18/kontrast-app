@@ -62,3 +62,7 @@ export const horarioMismatch = (horario, start) => (horario === 'madrugador' && 
 // (solo se señala en rojo en la carga horaria). El asignador automático también usa ese tope de 5 h.
 export const MAX_DAILY_MINUTES_TAQUILLA = 300;
 export const capOf = (teams) => ([...teams].includes('TAQUILLA') ? MAX_DAILY_MINUTES_TAQUILLA : MAX_DAILY_MINUTES);
+
+// Economía: coste de la comida por persona y comida (desayuno, comida y cena) = 9 € por persona y día.
+export const MEAL_COST_CENTS = 300;
+export const MEALS = ['Desayuno', 'Comida', 'Cena'];

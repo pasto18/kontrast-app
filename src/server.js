@@ -3,6 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { db, seedIfEmpty, sectoresDe } from './db.js';
 import { DAYS, AREAS, AREA_TEAMS, STRICT_AREAS, HORARIOS, MAX_DAILY_MINUTES, capOf } from './config.js';
+import { economia } from './economia.js';
 import { seedEntradasIfNeeded, taquilla, searchBuyers, ticketsOfType } from './entradas.js';
 import { listTemplates, disciplines, applyTemplate } from './templates.js';
 import { autoAssign, workload, findConflicts, candidatesFor, range, overlap, durMin } from './assigner.js';
@@ -409,6 +410,7 @@ app.delete('/api/templates/:id', (req, res) => {
 
 app.get('/api/taquilla', (_req, res) => res.json(taquilla()));
 app.get('/api/ticket-types/:id/tickets', (req, res) => { const r = ticketsOfType(+req.params.id); r ? res.json(r) : bad(res, 'Tipo de entrada no encontrado', 404); });
+app.get('/api/economia', (_req, res) => res.json(economia()));
 app.get('/api/buyers', (req, res) => res.json(searchBuyers(String(req.query.q ?? ''))));
 
 app.get('/api/workload', (_req, res) => res.json(workload()));

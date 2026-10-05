@@ -25,7 +25,7 @@ let showTime = store.get('showTime', false);
 let workload = {}, groupHours = {}, loadMode = store.get('loadMode', false);
 // Orden de la tabla de Personas: clic en una cabecera = orden principal, segundo clic = inverso, tercer clic = lista original.
 let peopleSort = store.get('peopleSort2', { key: null, step: 0 });
-const VIEWS = ['voluntarios', 'personas', 'companias', 'espacios', 'cocina', 'taquilla'];
+const VIEWS = ['voluntarios', 'personas', 'companias', 'espacios', 'cocina', 'taquilla', 'economia'];
 let diets = [], dtRowOther = null;
 let showOtherTeams = store.get('showOtherTeams', false);
 
@@ -537,6 +537,7 @@ function showView(v) {
   else if (v === 'voluntarios') renderTasks();
   else if (v === 'cocina') run(reloadCocina());
   else if (v === 'taquilla') run(loadTaquilla());
+  else if (v === 'economia') run(loadEconomia());
   else run(refreshCatalog().then(v === 'companias' ? renderCompanies : renderSpaces));
 }
 
@@ -775,6 +776,42 @@ async function searchBuyersUI() {
     || '<div class="empty">Sin resultados.</div>';
 }
 
+// ---------- Economía: ingresos por espectáculo y gastos de comida, por día ----------
+let eco = null, ecoDay = null; // ecoDay: fecha o 'all'
+async function loadEconomia() {
+  eco = await api('/api/economia');
+  if (!ecoDay) ecoDay = cfg.days.some((d) => d.date === clockDate()) ? clockDate() : 'all';
+  renderEconomia();
+}
+const moneyCls = (c) => (c < 0 ? 'money-neg' : c > 0 ? 'money-pos' : '');
+
+function renderEconomia() {
+  if (!eco) return;
+  $('#eco-days').innerHTML = `<button data-ecoday="all" class="${ecoDay === 'all' ? 'active' : ''}"><small>Todo</small><b>✦</b></button>` + cfg.days.map((d) =>
+    `<button data-ecoday="${d.date}" class="${d.date === ecoDay ? 'active' : ''} ${d.date === clockDate() ? 'today' : ''}" title="${d.label}"><small>${d.dow.slice(0, 3)}</small><b>${d.day}</b></button>`).join('');
+  const tiles = (inc, exp) => `<div class="eco-tiles"><div class="eco-tile in"><span>Ingresos</span><b>${eur(inc)}</b></div><div class="eco-tile out"><span>Gastos</span><b>${eur(exp)}</b></div>
+    <div class="eco-tile ${inc - exp < 0 ? 'neg' : 'pos'}"><span>Balance</span><b>${eur(inc - exp)}</b></div></div>`;
+  if (ecoDay === 'all') {
+    const t = eco.totals;
+    $('#eco-title').textContent = 'Todo el festival';
+    $('#eco-body').innerHTML = tiles(t.income_cents, t.expense_cents) + `<div class="eco-card"><h4>Día a día</h4><table id="eco-all"><thead><tr><th>Día</th><th class="num">Personas</th><th class="num">Ingresos</th><th class="num">Gastos (comida)</th><th class="num">Balance</th></tr></thead><tbody>${eco.days.map((d) =>
+      `<tr><td><button class="linklike" data-ecoday="${d.date}">${esc(fmtDay(d.date))}</button></td><td class="num">${d.people}</td><td class="num">${d.income_cents ? eur(d.income_cents) : '—'}</td><td class="num">${eur(d.expense_cents)}</td><td class="num ${moneyCls(d.balance_cents)}"><b>${eur(d.balance_cents)}</b></td></tr>`).join('')}
+      <tr class="total"><td>Total</td><td class="num"></td><td class="num">${eur(t.income_cents)}</td><td class="num">${eur(t.expense_cents)}</td><td class="num ${moneyCls(t.balance_cents)}">${eur(t.balance_cents)}</td></tr></tbody></table></div>`;
+    return;
+  }
+  const d = eco.days.find((x) => x.date === ecoDay), day = cfg.days.find((x) => x.date === ecoDay);
+  $('#eco-title').textContent = `${day.dow[0].toUpperCase()}${day.dow.slice(1)} ${day.day} de abril`;
+  $('#eco-body').innerHTML = tiles(d.income_cents, d.expense_cents) + `<div class="eco-cols">
+    <div class="eco-card"><h4>Ingresos por espectáculo</h4>${d.shows.length ? `<table><thead><tr><th>Hora</th><th>Espectáculo</th><th class="num">Entradas</th><th class="num">Ingresos</th></tr></thead><tbody>${d.shows.map((s) =>
+      `<tr><td>${s.time}</td><td><b>${esc(s.obra)}</b><div class="cname">${esc(s.company)}</div></td><td class="num">${s.tickets || '—'}</td><td class="num">${s.revenue_cents ? `<b>${eur(s.revenue_cents)}</b>` : '—'}</td></tr>`).join('')}
+      <tr class="total"><td colspan="3">Total ingresos</td><td class="num">${eur(d.income_cents)}</td></tr></tbody></table>
+      <p class="hint">Lo que corresponde a cada espectáculo de las entradas vendidas; los abonos y combinadas se reparten entre sus espectáculos (ver Taquilla).</p>` : '<div class="empty">No hay espectáculos este día.</div>'}</div>
+    <div class="eco-card"><h4>Gastos: comida</h4><table><thead><tr><th>Comida</th><th class="num">Personas</th><th class="num">Precio</th><th class="num">Total</th></tr></thead><tbody>${d.meals.map((m) =>
+      `<tr><td>${esc(m.label)}</td><td class="num">${m.people}</td><td class="num">${eur(m.unit_cents)}</td><td class="num">${eur(m.total_cents)}</td></tr>`).join('')}
+      <tr class="total"><td colspan="3">Total gastos</td><td class="num">${eur(d.expense_cents)}</td></tr></tbody></table>
+      <p class="hint">${d.people} personas presentes (voluntarias/os e integrantes de compañías) × ${eur(eco.meal_cost_cents * eco.meals.length)} por persona y día (${eur(eco.meal_cost_cents)} × ${eco.meals.length} comidas: ${eco.meals.join(', ').toLowerCase()}).</p></div></div>`;
+}
+
 // ---------- Tareas por espectáculo (plantillas) ----------
 let templates = [], tplDisciplines = [], tplDrafts = [];
 async function loadTemplates() { const r = await api('/api/templates'); templates = r.templates; tplDisciplines = r.disciplines; renderTemplates(); }
@@ -951,6 +988,7 @@ document.addEventListener('click', (e) => {
   else if (d.coRm) { dlgCompanies = dlgCompanies.filter((id) => id !== +d.coRm); renderDlgCompanies(); }
   else if (d.cday) { cocinaDay = d.cday; renderCocina(); }
   else if (d.tqday) { taqDay = d.tqday; renderTaquilla(); }
+  else if (d.ecoday) { ecoDay = d.ecoday; renderEconomia(); }
   else if (d.tktype) run(openTicketType(+d.tktype));
   else if (d.tkprofile) { const [k, t] = d.tkprofile.split(':').map(Number); run(openTicketProfile(k, t)); }
   else if (d.dtRm) { const [pid, did] = d.dtRm.split(':').map(Number); const p = cocinaPeople.find((x) => x.id === pid); run(saveDiets(pid, { diet_ids: p.diet_ids.filter((x) => x !== did) })); }
