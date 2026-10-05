@@ -241,18 +241,20 @@ tr.focus td{animation:focusBg 1.2s ease-in-out 6}
 #people-table th,#tasks-table th{overflow:hidden;text-overflow:ellipsis}
 
 /* Cocina */
-h3.sec{margin:18px 0 8px;font-size:15px}h3.sec .hint{font-weight:400}
-.meals{max-width:640px}
-#meals-table{table-layout:auto}
-#meals-table td.num,#meals-table th.num{text-align:right;font-variant-numeric:tabular-nums}
-#meals-table td.big{font-size:18px;font-weight:800}
-#meals-table tr.today{background:color-mix(in srgb,var(--accent) 12%,transparent)}
-#meals-table tr.total td{font-weight:700;border-top:2px solid var(--line)}
-.diet-add{margin:6px 0}
+h3.sec{margin:18px 0 10px;font-size:18px}h3.sec .hint{font-weight:400}
+.box{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px;max-width:1100px}
+.box-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px}
+.box-head b{font-size:17px}.box-total{font-size:34px;font-weight:800;line-height:1}
+.stats{display:flex;gap:12px;flex-wrap:wrap;margin:12px 0 4px}
+.stat{min-width:170px;flex:0 1 190px;text-align:center;border:1px solid var(--line);border-radius:10px;padding:12px 8px;background:var(--bg)}
+.stat b{display:block;font-size:26px;line-height:1.1}.stat span{font-size:12px;color:var(--mute)}
+h4.sub-h{margin:18px 0 8px;font-size:14px}
+.diet-add{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:12px}
 #diet-table{table-layout:auto}
 #diet-table td{white-space:normal}
-.dchip{display:inline-flex;align-items:center;gap:2px;font-size:12px;font-weight:600;padding:1px 4px 1px 9px;border-radius:99px;background:color-mix(in srgb,#2f9e44 18%,transparent);color:var(--ink);margin:1px 3px 1px 0}
+#diet-table th{position:static;background:var(--bg)}
+.dchip{display:inline-flex;align-items:center;gap:2px;font-size:13px;font-weight:700;padding:1px 4px 1px 9px;border-radius:99px;background:color-mix(in srgb,#e8a317 22%,transparent);color:var(--ink);margin:1px 3px 1px 0}
 .dchip button{border:0;background:none;padding:0 4px;color:var(--mute)}.dchip button:hover{color:var(--bad)}
-.dsum{font-size:12px;font-weight:700;padding:2px 10px;border-radius:99px;background:var(--card);border:1px solid var(--line)}
-select.dsel{font-size:11px;padding:1px 2px;border-style:dashed;max-width:110px;color:var(--mute)}
-.sq.sm{width:16px;height:16px}
+select.dsel{font-size:12px;padding:1px 3px;border-style:dashed;max-width:130px;color:var(--mute)}
+select.dieta-sel{font-size:13px;padding:2px 4px;border-color:transparent;background:transparent}
+select.dieta-sel:hover{border-color:var(--line)}

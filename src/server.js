@@ -32,19 +32,26 @@ const allSkillsExist = (ids) => ids.every((id) => db.prepare('SELECT 1 FROM skil
 app.get('/api/diets', (_req, res) => res.json(db.prepare('SELECT id, name FROM diets ORDER BY id').all()));
 app.post('/api/diets', (req, res) => {
   const name = String(req.body.name ?? '').trim().replace(/\s+/g, ' ');
-  if (!name || name.length > 40) return bad(res, 'La dieta o alergia necesita un nombre (máx. 40 caracteres)');
+  if (!name || name.length > 40) return bad(res, 'La alergia o intolerancia necesita un nombre (máx. 40 caracteres)');
   const strip = (x) => x.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
   const dup = db.prepare('SELECT id, name FROM diets').all().find((d) => strip(d.name) === strip(name));
   if (dup) return res.json(dup);
   res.status(201).json({ id: Number(db.prepare('INSERT INTO diets (name) VALUES (?)').run(name).lastInsertRowid), name });
 });
+// Dieta base ("dieta": omnivora | vegetariana | vegana) y/o alergias e intolerancias ("diet_ids") de una persona.
 app.put('/api/people/:id/diets', (req, res) => {
   const id = +req.params.id;
   if (!db.prepare('SELECT 1 FROM people WHERE id = ?').get(id)) return bad(res, 'Persona no encontrada', 404);
-  const ids = [...new Set((Array.isArray(req.body.diet_ids) ? req.body.diet_ids : []).map(Number))];
-  if (ids.some((d) => !db.prepare('SELECT 1 FROM diets WHERE id = ?').get(d))) return bad(res, 'Dieta no encontrada');
-  db.prepare('DELETE FROM person_diets WHERE person_id = ?').run(id);
-  for (const d of ids) db.prepare('INSERT INTO person_diets (person_id, diet_id) VALUES (?,?)').run(id, d);
+  if (req.body.dieta !== undefined) {
+    if (!['omnivora', 'vegetariana', 'vegana'].includes(req.body.dieta)) return bad(res, 'Dieta inválida');
+    db.prepare('UPDATE people SET dieta = ? WHERE id = ?').run(req.body.dieta, id);
+  }
+  if (req.body.diet_ids !== undefined) {
+    const ids = [...new Set((Array.isArray(req.body.diet_ids) ? req.body.diet_ids : []).map(Number))];
+    if (ids.some((d) => !db.prepare('SELECT 1 FROM diets WHERE id = ?').get(d))) return bad(res, 'Alergia no encontrada');
+    db.prepare('DELETE FROM person_diets WHERE person_id = ?').run(id);
+    for (const d of ids) db.prepare('INSERT INTO person_diets (person_id, diet_id) VALUES (?,?)').run(id, d);
+  }
   res.json({ ok: true });
 });
 

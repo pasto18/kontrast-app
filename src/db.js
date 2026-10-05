@@ -120,6 +120,9 @@ for (const col of ['template_id INTEGER REFERENCES task_templates(id) ON DELETE 
   if (!db.prepare("SELECT 1 FROM pragma_table_info('tasks') WHERE name = ?").get(col.split(' ')[0])) db.exec(`ALTER TABLE tasks ADD COLUMN ${col}`);
 }
 
+// Dieta base de cada persona (omnivora | vegetariana | vegana). Las alergias e intolerancias son un catálogo aparte.
+if (!db.prepare("SELECT 1 FROM pragma_table_info('people') WHERE name = 'dieta'").get()) db.exec("ALTER TABLE people ADD COLUMN dieta TEXT NOT NULL DEFAULT 'omnivora'");
+
 // La "disponibilidad" 50/100 de la hoja ya no se usa: solo importa el balance entre grupos.
 if (db.prepare("SELECT 1 FROM pragma_table_info('people') WHERE name = 'dispo'").get()) db.exec('ALTER TABLE people DROP COLUMN dispo');
 
@@ -310,6 +313,17 @@ function seedDietas() {
   link.run(celiacos[1], id('Intolerancia a la lactosa')); // una persona con dos
 }
 
+// Vegetariano / Vegano dejan de ser "alergias": pasan a ser la dieta base de la persona.
+function seedDietaBase() {
+  for (const [name, dieta] of [['Vegetariano', 'vegetariana'], ['Vegano', 'vegana']]) {
+    const d = db.prepare('SELECT id FROM diets WHERE name = ?').get(name);
+    if (!d) continue;
+    for (const r of db.prepare('SELECT person_id FROM person_diets WHERE diet_id = ?').all(d.id)) db.prepare('UPDATE people SET dieta = ? WHERE id = ?').run(dieta, r.person_id);
+    db.prepare('DELETE FROM diets WHERE id = ?').run(d.id);
+  }
+  db.prepare("UPDATE diets SET name = 'Celiaquía (sin gluten)' WHERE name = 'Celíaco'").run();
+}
+
 const norm = (s) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 export function suggestCompanies(taskName) {
   const n = norm(taskName);
@@ -353,4 +367,5 @@ export function seedIfEmpty() {
   applySeed('horarios-azar-v1', seedHorarios);
   applySeed('plantilla-taquilla-v1', seedPlantillaTaquilla);
   applySeed('dietas-v1', seedDietas);
+  applySeed('dietas-v2-dieta-base', seedDietaBase);
 }

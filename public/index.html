@@ -75,17 +75,25 @@
   </section>
 
   <section id="view-cocina" hidden>
-    <h3 class="sec">Comensales por día <span class="hint">(todas las personas presentes ese día; por ahora comen en las dos comidas)</span></h3>
-    <div class="table-wrap meals"><table id="meals-table"></table></div>
-    <h3 class="sec">Dieta / Alergias</h3>
-    <div id="diet-summary" class="chips-in"></div>
-    <div class="toolbar diet-add">
-      <select id="dt-person"></select>
-      <select id="dt-diet"></select>
-      <input id="dt-other" placeholder="Nueva dieta o alergia…" maxlength="40" hidden>
-      <button id="dt-add-btn" class="primary">Añadir</button>
+    <div id="cocina-days" class="days"></div>
+    <h3 class="sec" id="cocina-title"></h3>
+    <div class="box">
+      <div class="box-head">
+        <div><b>Todo el día</b><div class="hint">Cuenta a todas las personas presentes ese día. Por ahora no se separa comida y cena.</div></div>
+        <div class="box-total" id="cocina-total"></div>
+      </div>
+      <div class="stats" id="cocina-stats"></div>
+      <h4 class="sub-h" id="allergy-title"></h4>
+      <div class="table-wrap"><table id="diet-table"></table></div>
+      <div class="diet-add">
+        <span class="hint">Añadir o cambiar:</span>
+        <select id="dt-person"></select>
+        <select id="dt-dieta"><option value="">Dieta: sin cambios</option><option value="omnivora">Omnívora</option><option value="vegetariana">Vegetariana</option><option value="vegana">Vegana</option></select>
+        <select id="dt-diet"></select>
+        <input id="dt-other" placeholder="Nueva alergia o intolerancia…" maxlength="40" hidden>
+        <button id="dt-add-btn" class="primary">Guardar</button>
+      </div>
     </div>
-    <div class="table-wrap"><table id="diet-table"></table></div>
   </section>
 </main>
 

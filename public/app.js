@@ -628,16 +628,19 @@ async function saveOtherSkill(key) {
   renderAllSkillPickers();
 }
 
-// ---------- Cocina: comensales y dietas / alergias ----------
+// ---------- Cocina: gente por dieta y alergias / intolerancias, para un día ----------
 const dietName = (id) => diets.find((d) => d.id === id)?.name ?? id;
 const byNombre = (a, b) => a.nombre.localeCompare(b.nombre, 'es', { sensitivity: 'base' });
+const DIETA = { omnivora: 'Omnívora', vegetariana: 'Vegetariana', vegana: 'Vegana' };
+let cocinaDay = null;
 
 async function reloadCocina() {
   [people, diets] = await Promise.all([api('/api/people'), api('/api/diets')]);
+  if (!cocinaDay) cocinaDay = cfg.days.some((d) => d.date === clockDate()) ? clockDate() : cfg.days[0].date;
   renderCocina();
 }
-async function saveDiets(pid, ids) {
-  await api(`/api/people/${pid}/diets`, 'PUT', { diet_ids: ids });
+async function saveDiets(pid, body) {
+  await api(`/api/people/${pid}/diets`, 'PUT', body);
   people = await api('/api/people');
   renderCocina();
 }
@@ -648,35 +651,34 @@ async function newDiet(name) {
 }
 
 function renderCocina() {
+  if (!cocinaDay) return;
   if (dtRowOther !== null && document.activeElement?.dataset?.dtInput) return; // no pisar lo que se está escribiendo
-  const today = clockDate();
-  const rows = cfg.days.map((d) => { const here = people.filter((p) => p.av[d.date] === 1); return { d, n: here.length, nd: here.filter((p) => p.diet_ids.length).length }; });
-  const sum = (k) => rows.reduce((n, r) => n + r[k], 0);
-  $('#meals-table').innerHTML = `<thead><tr><th>Día</th><th class="num">Comida</th><th class="num">Cena</th><th class="num" title="Personas con dieta especial o alergia que están ese día">Con dieta especial</th></tr></thead><tbody>
-    ${rows.map((r) => `<tr class="${r.d.date === today ? 'today' : ''}"><td>${esc(r.d.label)}</td><td class="num big">${r.n}</td><td class="num big">${r.n}</td><td class="num">${r.nd || ''}</td></tr>`).join('')}
-    <tr class="total"><td>Total del festival</td><td class="num">${sum('n')}</td><td class="num">${sum('n')}</td><td></td></tr></tbody>`;
+  const day = cfg.days.find((d) => d.date === cocinaDay);
+  $('#cocina-days').innerHTML = cfg.days.map((d) => `<button data-cday="${d.date}" class="${d.date === cocinaDay ? 'active' : ''} ${d.date === clockDate() ? 'today' : ''}" title="${d.label}"><small>${d.dow.slice(0, 3)}</small><b>${d.day}</b></button>`).join('');
+  $('#cocina-title').textContent = `${day.dow[0].toUpperCase()}${day.dow.slice(1)} ${day.day} de abril`;
 
-  const withDiet = people.filter((p) => p.diet_ids.length).sort(byNombre);
-  $('#diet-summary').innerHTML = diets.map((d) => ({ d, n: withDiet.filter((p) => p.diet_ids.includes(d.id)).length })).filter((x) => x.n)
-    .map((x) => `<span class="dsum">${esc(x.d.name)} · ${x.n}</span>`).join('') || '<span class="hint">Nadie tiene dieta o alergia registrada.</span>';
+  const here = people.filter((p) => p.av[cocinaDay] === 1);
+  $('#cocina-total').textContent = here.length;
+  $('#cocina-stats').innerHTML = Object.entries(DIETA).map(([k, l]) => `<div class="stat"><b>${here.filter((p) => (p.dieta || 'omnivora') === k).length}</b><span>${l}</span></div>`).join('');
 
-  const keepP = $('#dt-person').value, keepD = $('#dt-diet').value;
+  const list = here.filter((p) => p.diet_ids.length).sort(byNombre);
+  $('#allergy-title').textContent = `Alergias e intolerancias (${list.length})`;
+  const keepP = $('#dt-person').value, keepA = $('#dt-diet').value;
   $('#dt-person').innerHTML = '<option value="">Elegir persona…</option>' + [...people].sort(byNombre).map((p) => `<option value="${p.id}">${esc(p.nombre)}${teamsOf(p).length ? ` · ${esc(teamsOf(p).join('/'))}` : ''}</option>`).join('');
-  $('#dt-diet').innerHTML = '<option value="">Elegir dieta o alergia…</option>' + diets.map((d) => `<option value="${d.id}">${esc(d.name)}</option>`).join('') + '<option value="__other">Otra…</option>';
-  $('#dt-person').value = keepP; $('#dt-diet').value = keepD;
+  $('#dt-diet').innerHTML = '<option value="">Alergia: ninguna nueva</option>' + diets.map((d) => `<option value="${d.id}">${esc(d.name)}</option>`).join('') + '<option value="__other">Otra…</option>';
+  $('#dt-person').value = keepP; $('#dt-diet').value = keepA;
   $('#dt-other').hidden = $('#dt-diet').value !== '__other';
 
-  const days = cfg.days;
-  $('#diet-table').innerHTML = `<thead><tr><th>Nombre</th><th>Dieta / alergia</th>${days.map((d) => `<th class="d" title="${d.label}">${d.dow.slice(0, 1).toUpperCase()}<br>${d.day}</th>`).join('')}<th class="num">Días</th></tr></thead><tbody>
-    ${withDiet.map((p) => {
+  $('#diet-table').innerHTML = `<thead><tr><th>Nombre</th><th>Dieta</th><th>Alergia / intolerancia</th></tr></thead><tbody>
+    ${list.map((p) => {
       const have = new Set(p.diet_ids);
-      const sel = dtRowOther === p.id
-        ? `<span class="other"><input data-dt-input="${p.id}" placeholder="Nueva dieta…" maxlength="40"><button data-dt-save="${p.id}">+</button><button data-dt-cancel="${p.id}" title="Cancelar">×</button></span>`
-        : `<select class="dsel" data-dt-add="${p.id}"><option value="">+ dieta</option>${diets.filter((d) => !have.has(d.id)).map((d) => `<option value="${d.id}">${esc(d.name)}</option>`).join('')}<option value="__other">Otra…</option></select>`;
-      return `<tr><td><b>${esc(p.nombre)}</b></td><td>${p.diet_ids.map((id) => `<span class="dchip">${esc(dietName(id))}<button data-dt-rm="${p.id}:${id}" title="Quitar">×</button></span>`).join('')}${sel}</td>
-        ${days.map((d) => `<td class="d"><i class="sq sm ${p.av[d.date] === 1 ? 'on' : p.av[d.date] === 0 ? 'off' : 'unk'}" title="${d.label}"></i></td>`).join('')}
-        <td class="num"><b>${days.filter((d) => p.av[d.date] === 1).length}</b></td></tr>`;
-    }).join('') || `<tr><td colspan="${days.length + 3}" class="empty">Nadie tiene dieta o alergia registrada.</td></tr>`}</tbody>`;
+      const add = dtRowOther === p.id
+        ? `<span class="other"><input data-dt-input="${p.id}" placeholder="Nueva alergia…" maxlength="40"><button data-dt-save="${p.id}">+</button><button data-dt-cancel="${p.id}" title="Cancelar">×</button></span>`
+        : `<select class="dsel" data-dt-add="${p.id}"><option value="">+ alergia</option>${diets.filter((d) => !have.has(d.id)).map((d) => `<option value="${d.id}">${esc(d.name)}</option>`).join('')}<option value="__other">Otra…</option></select>`;
+      return `<tr><td>${esc(p.nombre)}</td>
+        <td><select class="dieta-sel" data-dt-dieta="${p.id}">${Object.entries(DIETA).map(([k, l]) => `<option value="${k}" ${k === (p.dieta || 'omnivora') ? 'selected' : ''}>${l}</option>`).join('')}</select></td>
+        <td>${p.diet_ids.map((id) => `<span class="dchip">${esc(dietName(id))}<button data-dt-rm="${p.id}:${id}" title="Quitar">×</button></span>`).join('')}${add}</td></tr>`;
+    }).join('') || '<tr><td colspan="3" class="empty">Nadie tiene alergias ni intolerancias registradas ese día.</td></tr>'}</tbody>`;
   const ot = $('[data-dt-input]'); if (ot) ot.focus();
 }
 
@@ -854,8 +856,9 @@ document.addEventListener('click', (e) => {
   else if (d.company) run(openDetail('company', d.company));
   else if (d.space) run(openDetail('space', d.space));
   else if (d.coRm) { dlgCompanies = dlgCompanies.filter((id) => id !== +d.coRm); renderDlgCompanies(); }
-  else if (d.dtRm) { const [pid, did] = d.dtRm.split(':').map(Number); const p = people.find((x) => x.id === pid); run(saveDiets(pid, p.diet_ids.filter((x) => x !== did))); }
-  else if (d.dtSave) run((async () => { const inp = $(`[data-dt-input="${d.dtSave}"]`); const name = inp.value.trim(); if (!name) return; const nd = await newDiet(name); const p = people.find((x) => x.id === +d.dtSave); dtRowOther = null; await saveDiets(p.id, [...new Set([...p.diet_ids, nd.id])]); })());
+  else if (d.cday) { cocinaDay = d.cday; renderCocina(); }
+  else if (d.dtRm) { const [pid, did] = d.dtRm.split(':').map(Number); const p = people.find((x) => x.id === pid); run(saveDiets(pid, { diet_ids: p.diet_ids.filter((x) => x !== did) })); }
+  else if (d.dtSave) run((async () => { const inp = $(`[data-dt-input="${d.dtSave}"]`); const name = inp.value.trim(); if (!name) return; const nd = await newDiet(name); const p = people.find((x) => x.id === +d.dtSave); dtRowOther = null; await saveDiets(p.id, { diet_ids: [...new Set([...p.diet_ids, nd.id])] }); })());
   else if (d.dtCancel) { dtRowOther = null; renderCocina(); }
   else if (d.tplSave) run(saveTemplateCard(d.tplSave));
   else if (d.tplDel) { const t = templates.find((x) => x.id === +d.tplDel); if (confirm(`¿Eliminar la plantilla "${t.name}"? Sus ${t.task_count} tareas se conservan como tareas sueltas.`)) run(api(`/api/templates/${t.id}`, 'DELETE').then(() => Promise.all([loadTemplates(), loadTasks()]))); }
@@ -874,9 +877,10 @@ document.addEventListener('change', (e) => {
   if (s.dataset.dtAdd !== undefined && s.value) {
     const pid = +s.dataset.dtAdd, p = people.find((x) => x.id === pid);
     if (s.value === '__other') { dtRowOther = pid; renderCocina(); }
-    else run(saveDiets(pid, [...p.diet_ids, +s.value]));
+    else run(saveDiets(pid, { diet_ids: [...p.diet_ids, +s.value] }));
     return;
   }
+  if (s.dataset.dtDieta !== undefined) { run(saveDiets(+s.dataset.dtDieta, { dieta: s.value })); return; }
   if (s.id === 'dt-diet') { $('#dt-other').hidden = s.value !== '__other'; if (!$('#dt-other').hidden) $('#dt-other').focus(); return; }
   if (s.dataset.pskAdd !== undefined && s.value) {
     const id = +s.dataset.pskAdd, p = people.find((x) => x.id === id);
@@ -995,13 +999,16 @@ $('#template-add').onclick = () => {
   renderTemplates(); $('#templates-body').lastElementChild?.scrollIntoView({ block: 'center' });
 };
 $('#dt-add-btn').onclick = () => run((async () => {
-  const pid = +$('#dt-person').value; let did = $('#dt-diet').value;
+  const pid = +$('#dt-person').value, dieta = $('#dt-dieta').value; let did = $('#dt-diet').value;
   if (!pid) return toast('Elige una persona');
-  if (!did) return toast('Elige una dieta o alergia');
-  if (did === '__other') { const name = $('#dt-other').value.trim(); if (!name) return toast('Escribe el nombre de la dieta o alergia'); did = (await newDiet(name)).id; $('#dt-other').value = ''; }
-  const p = people.find((x) => x.id === pid);
-  $('#dt-person').value = ''; $('#dt-diet').value = '';
-  await saveDiets(pid, [...new Set([...p.diet_ids, +did])]);
+  if (!dieta && !did) return toast('Elige una dieta o una alergia');
+  const p = people.find((x) => x.id === pid), body = {};
+  if (dieta) body.dieta = dieta;
+  if (did === '__other') { const name = $('#dt-other').value.trim(); if (!name) return toast('Escribe el nombre de la alergia o intolerancia'); did = (await newDiet(name)).id; $('#dt-other').value = ''; }
+  if (did) body.diet_ids = [...new Set([...p.diet_ids, +did])];
+  $('#dt-person').value = ''; $('#dt-dieta').value = ''; $('#dt-diet').value = '';
+  await saveDiets(pid, body);
+  if (body.diet_ids && p.av[cocinaDay] !== 1) toast(`Guardado. ${p.nombre} no aparece en la lista porque no está el ${cfg.days.find((d) => d.date === cocinaDay).label}.`);
 })());
 $('#add-person').onclick = () => openPerson(null);
 $('#add-task').onclick = () => openTask(null);
