@@ -25,7 +25,8 @@ let showTime = store.get('showTime', false);
 let workload = {}, groupHours = {}, loadMode = store.get('loadMode', false);
 // Orden de la tabla de Personas: clic en una cabecera = orden principal, segundo clic = inverso, tercer clic = lista original.
 let peopleSort = store.get('peopleSort2', { key: null, step: 0 });
-const VIEWS = ['voluntarios', 'personas', 'companias', 'espacios'];
+const VIEWS = ['voluntarios', 'personas', 'companias', 'espacios', 'cocina'];
+let diets = [], dtRowOther = null;
 let showOtherTeams = store.get('showOtherTeams', false);
 
 // ---------- Reloj simulado (hora "naive": se trata todo como UTC) ----------
@@ -45,6 +46,7 @@ function setClock(ms, { follow = true } = {}) {
   if (follow && cfg && clockDate() !== prevDate && cfg.days.some((d) => d.date === clockDate())) selectDay(clockDate());
   else if (view === 'voluntarios' && tasks.length) renderTasks();
   if (view === 'personas' && clockDate() !== prevDate) renderPeople();
+  if (view === 'cocina' && clockDate() !== prevDate) renderCocina();
   renderDays();
 }
 
@@ -533,6 +535,7 @@ function showView(v) {
   for (const k of VIEWS) $(`#view-${k}`).hidden = k !== v;
   if (v === 'personas') run(refreshWorkload().then(renderPeople));
   else if (v === 'voluntarios') renderTasks();
+  else if (v === 'cocina') run(reloadCocina());
   else run(refreshCatalog().then(v === 'companias' ? renderCompanies : renderSpaces));
 }
 
@@ -623,6 +626,58 @@ async function saveOtherSkill(key) {
   if (!pickers[key].ids.includes(sk.id)) pickers[key].ids.push(sk.id);
   pickers[key].other = false;
   renderAllSkillPickers();
+}
+
+// ---------- Cocina: comensales y dietas / alergias ----------
+const dietName = (id) => diets.find((d) => d.id === id)?.name ?? id;
+const byNombre = (a, b) => a.nombre.localeCompare(b.nombre, 'es', { sensitivity: 'base' });
+
+async function reloadCocina() {
+  [people, diets] = await Promise.all([api('/api/people'), api('/api/diets')]);
+  renderCocina();
+}
+async function saveDiets(pid, ids) {
+  await api(`/api/people/${pid}/diets`, 'PUT', { diet_ids: ids });
+  people = await api('/api/people');
+  renderCocina();
+}
+async function newDiet(name) {
+  const d = await api('/api/diets', 'POST', { name });
+  if (!diets.some((x) => x.id === d.id)) diets.push(d);
+  return d;
+}
+
+function renderCocina() {
+  if (dtRowOther !== null && document.activeElement?.dataset?.dtInput) return; // no pisar lo que se está escribiendo
+  const today = clockDate();
+  const rows = cfg.days.map((d) => { const here = people.filter((p) => p.av[d.date] === 1); return { d, n: here.length, nd: here.filter((p) => p.diet_ids.length).length }; });
+  const sum = (k) => rows.reduce((n, r) => n + r[k], 0);
+  $('#meals-table').innerHTML = `<thead><tr><th>Día</th><th class="num">Comida</th><th class="num">Cena</th><th class="num" title="Personas con dieta especial o alergia que están ese día">Con dieta especial</th></tr></thead><tbody>
+    ${rows.map((r) => `<tr class="${r.d.date === today ? 'today' : ''}"><td>${esc(r.d.label)}</td><td class="num big">${r.n}</td><td class="num big">${r.n}</td><td class="num">${r.nd || ''}</td></tr>`).join('')}
+    <tr class="total"><td>Total del festival</td><td class="num">${sum('n')}</td><td class="num">${sum('n')}</td><td></td></tr></tbody>`;
+
+  const withDiet = people.filter((p) => p.diet_ids.length).sort(byNombre);
+  $('#diet-summary').innerHTML = diets.map((d) => ({ d, n: withDiet.filter((p) => p.diet_ids.includes(d.id)).length })).filter((x) => x.n)
+    .map((x) => `<span class="dsum">${esc(x.d.name)} · ${x.n}</span>`).join('') || '<span class="hint">Nadie tiene dieta o alergia registrada.</span>';
+
+  const keepP = $('#dt-person').value, keepD = $('#dt-diet').value;
+  $('#dt-person').innerHTML = '<option value="">Elegir persona…</option>' + [...people].sort(byNombre).map((p) => `<option value="${p.id}">${esc(p.nombre)}${teamsOf(p).length ? ` · ${esc(teamsOf(p).join('/'))}` : ''}</option>`).join('');
+  $('#dt-diet').innerHTML = '<option value="">Elegir dieta o alergia…</option>' + diets.map((d) => `<option value="${d.id}">${esc(d.name)}</option>`).join('') + '<option value="__other">Otra…</option>';
+  $('#dt-person').value = keepP; $('#dt-diet').value = keepD;
+  $('#dt-other').hidden = $('#dt-diet').value !== '__other';
+
+  const days = cfg.days;
+  $('#diet-table').innerHTML = `<thead><tr><th>Nombre</th><th>Dieta / alergia</th>${days.map((d) => `<th class="d" title="${d.label}">${d.dow.slice(0, 1).toUpperCase()}<br>${d.day}</th>`).join('')}<th class="num">Días</th></tr></thead><tbody>
+    ${withDiet.map((p) => {
+      const have = new Set(p.diet_ids);
+      const sel = dtRowOther === p.id
+        ? `<span class="other"><input data-dt-input="${p.id}" placeholder="Nueva dieta…" maxlength="40"><button data-dt-save="${p.id}">+</button><button data-dt-cancel="${p.id}" title="Cancelar">×</button></span>`
+        : `<select class="dsel" data-dt-add="${p.id}"><option value="">+ dieta</option>${diets.filter((d) => !have.has(d.id)).map((d) => `<option value="${d.id}">${esc(d.name)}</option>`).join('')}<option value="__other">Otra…</option></select>`;
+      return `<tr><td><b>${esc(p.nombre)}</b></td><td>${p.diet_ids.map((id) => `<span class="dchip">${esc(dietName(id))}<button data-dt-rm="${p.id}:${id}" title="Quitar">×</button></span>`).join('')}${sel}</td>
+        ${days.map((d) => `<td class="d"><i class="sq sm ${p.av[d.date] === 1 ? 'on' : p.av[d.date] === 0 ? 'off' : 'unk'}" title="${d.label}"></i></td>`).join('')}
+        <td class="num"><b>${days.filter((d) => p.av[d.date] === 1).length}</b></td></tr>`;
+    }).join('') || `<tr><td colspan="${days.length + 3}" class="empty">Nadie tiene dieta o alergia registrada.</td></tr>`}</tbody>`;
+  const ot = $('[data-dt-input]'); if (ot) ot.focus();
 }
 
 // ---------- Tareas por espectáculo (plantillas) ----------
@@ -799,6 +854,9 @@ document.addEventListener('click', (e) => {
   else if (d.company) run(openDetail('company', d.company));
   else if (d.space) run(openDetail('space', d.space));
   else if (d.coRm) { dlgCompanies = dlgCompanies.filter((id) => id !== +d.coRm); renderDlgCompanies(); }
+  else if (d.dtRm) { const [pid, did] = d.dtRm.split(':').map(Number); const p = people.find((x) => x.id === pid); run(saveDiets(pid, p.diet_ids.filter((x) => x !== did))); }
+  else if (d.dtSave) run((async () => { const inp = $(`[data-dt-input="${d.dtSave}"]`); const name = inp.value.trim(); if (!name) return; const nd = await newDiet(name); const p = people.find((x) => x.id === +d.dtSave); dtRowOther = null; await saveDiets(p.id, [...new Set([...p.diet_ids, nd.id])]); })());
+  else if (d.dtCancel) { dtRowOther = null; renderCocina(); }
   else if (d.tplSave) run(saveTemplateCard(d.tplSave));
   else if (d.tplDel) { const t = templates.find((x) => x.id === +d.tplDel); if (confirm(`¿Eliminar la plantilla "${t.name}"? Sus ${t.task_count} tareas se conservan como tareas sueltas.`)) run(api(`/api/templates/${t.id}`, 'DELETE').then(() => Promise.all([loadTemplates(), loadTasks()]))); }
   else if (d.tplCancel) { tplDrafts.splice(+d.tplCancel, 1); renderTemplates(); }
@@ -813,6 +871,13 @@ document.addEventListener('click', (e) => {
 });
 document.addEventListener('change', (e) => {
   const s = e.target;
+  if (s.dataset.dtAdd !== undefined && s.value) {
+    const pid = +s.dataset.dtAdd, p = people.find((x) => x.id === pid);
+    if (s.value === '__other') { dtRowOther = pid; renderCocina(); }
+    else run(saveDiets(pid, [...p.diet_ids, +s.value]));
+    return;
+  }
+  if (s.id === 'dt-diet') { $('#dt-other').hidden = s.value !== '__other'; if (!$('#dt-other').hidden) $('#dt-other').focus(); return; }
   if (s.dataset.pskAdd !== undefined && s.value) {
     const id = +s.dataset.pskAdd, p = people.find((x) => x.id === id);
     if (s.value === '__other') { pOther = id; renderPeople(true); }
@@ -838,6 +903,11 @@ $('#detail-close').onclick = () => $('#detail-dialog').close();
 $('#companies-search').oninput = renderCompanies;
 $('#spaces-search').oninput = renderSpaces;
 document.addEventListener('keydown', (e) => {
+  if (e.target.dataset?.dtInput) {
+    if (e.key === 'Enter') { e.preventDefault(); document.querySelector(`[data-dt-save="${e.target.dataset.dtInput}"]`).click(); }
+    else if (e.key === 'Escape') { dtRowOther = null; renderCocina(); }
+    return;
+  }
   if (e.target.dataset?.pskInput) {
     if (e.key === 'Enter') { e.preventDefault(); run(savePersonSkillOther(+e.target.dataset.pskInput)); }
     else if (e.key === 'Escape') { pOther = null; renderPeople(); }
@@ -924,6 +994,15 @@ $('#template-add').onclick = () => {
   tplDrafts.push({ name: 'Montaje', task_name: 'Montaje {obra}', area: 'tecnica', start_offset: -180, end_offset: -60, needed: 2, space: '', skill_ids: [], exclude: ['DINAR', 'XERRADA'] });
   renderTemplates(); $('#templates-body').lastElementChild?.scrollIntoView({ block: 'center' });
 };
+$('#dt-add-btn').onclick = () => run((async () => {
+  const pid = +$('#dt-person').value; let did = $('#dt-diet').value;
+  if (!pid) return toast('Elige una persona');
+  if (!did) return toast('Elige una dieta o alergia');
+  if (did === '__other') { const name = $('#dt-other').value.trim(); if (!name) return toast('Escribe el nombre de la dieta o alergia'); did = (await newDiet(name)).id; $('#dt-other').value = ''; }
+  const p = people.find((x) => x.id === pid);
+  $('#dt-person').value = ''; $('#dt-diet').value = '';
+  await saveDiets(pid, [...new Set([...p.diet_ids, +did])]);
+})());
 $('#add-person').onclick = () => openPerson(null);
 $('#add-task').onclick = () => openTask(null);
 $('#people-search').oninput = renderPeople;
@@ -942,6 +1021,7 @@ setTopbarH(); window.addEventListener('resize', setTopbarH);
 (async () => {
   [cfg, people] = await Promise.all([api('/api/config'), api('/api/people')]);
   skills = await api('/api/skills');
+  diets = await api('/api/diets');
   await refreshCatalog();
   const fill = (sel, items) => { sel.innerHTML = items.map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join(''); };
   fill(form.elements.area, Object.entries(cfg.areas));

@@ -14,6 +14,7 @@
     <button data-view="personas">Personas</button>
     <button data-view="companias">Compañías</button>
     <button data-view="espacios">Espacios</button>
+    <button data-view="cocina">Cocina</button>
   </nav>
   <div class="clock">
   <button id="clock-toggle" class="clock-icon" title="Reloj simulado" aria-expanded="false">🕒</button>
@@ -71,6 +72,20 @@
   <section id="view-espacios" hidden>
     <div class="toolbar"><input type="search" id="spaces-search" placeholder="Buscar espacio…"><span class="legend" id="spaces-count"></span></div>
     <div id="spaces-cards" class="cards"></div>
+  </section>
+
+  <section id="view-cocina" hidden>
+    <h3 class="sec">Comensales por día <span class="hint">(todas las personas presentes ese día; por ahora comen en las dos comidas)</span></h3>
+    <div class="table-wrap meals"><table id="meals-table"></table></div>
+    <h3 class="sec">Dieta / Alergias</h3>
+    <div id="diet-summary" class="chips-in"></div>
+    <div class="toolbar diet-add">
+      <select id="dt-person"></select>
+      <select id="dt-diet"></select>
+      <input id="dt-other" placeholder="Nueva dieta o alergia…" maxlength="40" hidden>
+      <button id="dt-add-btn" class="primary">Añadir</button>
+    </div>
+    <div class="table-wrap"><table id="diet-table"></table></div>
   </section>
 </main>
 

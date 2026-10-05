@@ -99,6 +99,15 @@ CREATE TABLE IF NOT EXISTS template_skills (
   skill_id INTEGER NOT NULL REFERENCES skills(id) ON DELETE CASCADE,
   PRIMARY KEY (template_id, skill_id)
 );
+CREATE TABLE IF NOT EXISTS diets (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE COLLATE NOCASE
+);
+CREATE TABLE IF NOT EXISTS person_diets (
+  person_id INTEGER NOT NULL REFERENCES people(id) ON DELETE CASCADE,
+  diet_id INTEGER NOT NULL REFERENCES diets(id) ON DELETE CASCADE,
+  PRIMARY KEY (person_id, diet_id)
+);
 CREATE TABLE IF NOT EXISTS assignments (
   task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
   person_id INTEGER NOT NULL REFERENCES people(id) ON DELETE CASCADE,
@@ -284,6 +293,23 @@ function seedPlantillaTaquilla() {
   }
 }
 
+// Dietas y alergias: catálogo compartido y, como datos de prueba, un reparto al azar (semilla fija) entre personas que van al festival.
+function seedDietas() {
+  const names = ['Vegetariano', 'Vegano', 'Celíaco', 'Alergia a frutos secos', 'Intolerancia a la lactosa', 'Alergia al marisco', 'Sin cerdo'];
+  const ins = db.prepare('INSERT OR IGNORE INTO diets (name) VALUES (?)');
+  for (const n of names) ins.run(n);
+  const id = (n) => db.prepare('SELECT id FROM diets WHERE name = ?').get(n).id;
+  const ids = db.prepare("SELECT DISTINCT person_id FROM availability WHERE present = 1 AND date <= '2025-04-19' ORDER BY person_id").all().map((r) => r.person_id);
+  let x = 20250419; const rnd = () => ((x = (x * 1664525 + 1013904223) % 4294967296) / 4294967296);
+  for (let i = ids.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [ids[i], ids[j]] = [ids[j], ids[i]]; }
+  // 4 vegetarianos, 2 veganos, 2 celíacos, 1 alergia a frutos secos, 2 intolerantes a la lactosa, 1 alergia al marisco, 1 sin cerdo
+  const plan = [['Vegetariano', 4], ['Vegano', 2], ['Celíaco', 2], ['Alergia a frutos secos', 1], ['Intolerancia a la lactosa', 2], ['Alergia al marisco', 1], ['Sin cerdo', 1]];
+  const link = db.prepare('INSERT OR IGNORE INTO person_diets (person_id, diet_id) VALUES (?,?)');
+  let k = 0, celiacos = [];
+  for (const [name, n] of plan) for (let i = 0; i < n; i++) { const pid = ids[k++]; link.run(pid, id(name)); if (name === 'Celíaco') celiacos.push(pid); }
+  link.run(celiacos[1], id('Intolerancia a la lactosa')); // una persona con dos
+}
+
 const norm = (s) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 export function suggestCompanies(taskName) {
   const n = norm(taskName);
@@ -326,4 +352,5 @@ export function seedIfEmpty() {
   applySeed('taquilla-v1', seedTaquillas);
   applySeed('horarios-azar-v1', seedHorarios);
   applySeed('plantilla-taquilla-v1', seedPlantillaTaquilla);
+  applySeed('dietas-v1', seedDietas);
 }

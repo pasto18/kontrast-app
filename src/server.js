@@ -18,15 +18,35 @@ app.get('/api/config', (_req, res) => res.json({ days: DAYS, areas: AREAS, maxMi
 
 function peopleList() {
   const people = db.prepare('SELECT * FROM people ORDER BY id').all();
-  const m = new Map(people.map((p) => [p.id, { ...p, av: {}, skill_ids: [] }]));
+  const m = new Map(people.map((p) => [p.id, { ...p, av: {}, skill_ids: [], diet_ids: [] }]));
   for (const r of db.prepare('SELECT person_id, date, present FROM availability').all()) m.get(r.person_id).av[r.date] = r.present;
   for (const r of db.prepare('SELECT person_id, skill_id FROM person_skills').all()) m.get(r.person_id).skill_ids.push(r.skill_id);
+  for (const r of db.prepare('SELECT person_id, diet_id FROM person_diets').all()) m.get(r.person_id).diet_ids.push(r.diet_id);
   return [...m.values()];
 }
 app.get('/api/people', (_req, res) => res.json(peopleList()));
 
 const skillIds = (body) => [...new Set((Array.isArray(body.skill_ids) ? body.skill_ids : []).map(Number))];
 const allSkillsExist = (ids) => ids.every((id) => db.prepare('SELECT 1 FROM skills WHERE id = ?').get(id));
+
+app.get('/api/diets', (_req, res) => res.json(db.prepare('SELECT id, name FROM diets ORDER BY id').all()));
+app.post('/api/diets', (req, res) => {
+  const name = String(req.body.name ?? '').trim().replace(/\s+/g, ' ');
+  if (!name || name.length > 40) return bad(res, 'La dieta o alergia necesita un nombre (máx. 40 caracteres)');
+  const strip = (x) => x.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const dup = db.prepare('SELECT id, name FROM diets').all().find((d) => strip(d.name) === strip(name));
+  if (dup) return res.json(dup);
+  res.status(201).json({ id: Number(db.prepare('INSERT INTO diets (name) VALUES (?)').run(name).lastInsertRowid), name });
+});
+app.put('/api/people/:id/diets', (req, res) => {
+  const id = +req.params.id;
+  if (!db.prepare('SELECT 1 FROM people WHERE id = ?').get(id)) return bad(res, 'Persona no encontrada', 404);
+  const ids = [...new Set((Array.isArray(req.body.diet_ids) ? req.body.diet_ids : []).map(Number))];
+  if (ids.some((d) => !db.prepare('SELECT 1 FROM diets WHERE id = ?').get(d))) return bad(res, 'Dieta no encontrada');
+  db.prepare('DELETE FROM person_diets WHERE person_id = ?').run(id);
+  for (const d of ids) db.prepare('INSERT INTO person_diets (person_id, diet_id) VALUES (?,?)').run(id, d);
+  res.json({ ok: true });
+});
 
 app.get('/api/skills', (_req, res) => res.json(db.prepare('SELECT id, name FROM skills ORDER BY id').all()));
 
