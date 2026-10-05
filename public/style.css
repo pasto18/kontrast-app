@@ -16,7 +16,7 @@ input,select{background:var(--card);border:1px solid var(--line);border-radius:6
 .clock-panel{position:absolute;right:0;top:calc(100% + 8px);z-index:10;display:flex;gap:4px;align-items:center;flex-wrap:wrap;width:max-content;max-width:90vw;background:var(--card);padding:8px 10px;border-radius:10px;border:1px solid var(--accent);box-shadow:0 8px 24px rgba(0,0,0,.2)}
 .clock-panel[hidden]{display:none}
 .clock-label{font-size:12px;color:var(--mute);margin-right:4px}
-main{padding:16px;max-width:1500px;margin:0 auto}
+main{padding:16px;max-width:none;margin:0 auto}
 .toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:10px}
 .toolbar .primary{margin-left:auto}
 #others-toggle.active{background:var(--ink);color:var(--bg);border-color:var(--ink)}
@@ -223,5 +223,19 @@ tr.focus td{animation:focusBg 1.2s ease-in-out 6}
 .tpl .actions{margin-top:10px}
 
 /* Personas: la tabla se desplaza dentro de su marco y la cabecera (días incluidos) se queda fija */
-#view-personas .table-wrap{max-height:calc(100vh - 150px)}
-#people-table thead th{position:sticky;top:0;z-index:3;background:var(--card);box-shadow:0 1px 0 var(--line)}
+#people-table thead th{position:sticky;top:var(--topbar-h,56px);z-index:3;background:var(--card);box-shadow:0 1px 0 var(--line)}
+
+/* Tablas de ancho fijo: las columnas no cambian de tamaño al filtrar o esconder filas, y ocupan todo el ancho disponible */
+#people-table,#tasks-table{table-layout:fixed;width:100%}
+#people-table td,#tasks-table td{white-space:normal;overflow:hidden}
+#people-table td.balc,#people-table td.num,#people-table td.hzc,#tasks-table td.tm,#tasks-table td.nec,#tasks-table td.est,#tasks-table td.acts{white-space:nowrap}
+#view-personas .table-wrap{overflow:clip;max-height:none}  /* sin barras de scroll propias: la cabecera fija se pega a la barra superior de la página */
+#people-table th:nth-child(1){width:17%}#people-table th:nth-child(2){width:66px}#people-table th:nth-child(3){width:15%}
+#people-table th:nth-child(4){width:78px}#people-table th:nth-child(5){width:14%}#people-table th:nth-child(6){width:84px}
+#people-table th:nth-child(7){width:48px}#people-table th:nth-child(n+8):nth-child(-n+21){width:36px}
+#people-table th:nth-child(22){width:86px}#people-table th:nth-child(23){width:46px}
+#tasks-table th:nth-child(1),#tasks-table th:nth-child(2){width:62px}#tasks-table th:nth-child(3){width:58px}#tasks-table th:nth-child(4){width:150px}
+#tasks-table th:nth-child(5){width:11%}#tasks-table th:nth-child(6){width:21%}#tasks-table th:nth-child(7){width:190px}#tasks-table th:nth-child(8){width:56px}
+#tasks-table th:nth-child(9){width:10%}#tasks-table th:nth-child(10){width:72px}#tasks-table th:nth-child(11){width:275px}#tasks-table th:nth-child(12){width:112px}
+@media (max-width:1250px){#view-personas .table-wrap{overflow-x:auto}#people-table{min-width:1180px}#tasks-table{min-width:1180px}}
+#people-table th,#tasks-table th{overflow:hidden;text-overflow:ellipsis}

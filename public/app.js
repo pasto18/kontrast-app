@@ -397,8 +397,8 @@ function renderPeople(force = false) {
   const th = (key, label, attrs = '', cls = '') => `<th class="sortable ${cls}" data-sort="${key}" ${attrs}>${label}${sortArrow(key)}</th>`;
   const head = `<thead><tr>${th('nombre', 'Nombre')}${th('grupo', 'Grupo')}${th('equipo', 'Equipo')}${th('horario', 'Horario', 'title="Horario preferido: ☀ madrugadorx, ☾ trasnochadorx, – indiferente. Orden: madrugadorx, indiferente, trasnochadorx"')}${th('aptitudes', 'Aptitudes')}${th('balance', 'Balance', 'title="Horas de más en Técnica (T) o en Bar/Cocina/Limpieza (B/C). Solo para quien está en ambos grupos. Orden: más desbalance primero"')}${th('dias', 'Días', 'title="Días presentes en el festival. Orden: más días primero"', 'num')}
     ${days.map((d) => `<th class="d sortable" data-sort="day:${d.date}" title="${d.label}: ${loadMode ? 'más horas primero' : 'presentes primero'}">${d.dow.slice(0, 1).toUpperCase()}<br>${d.day}${sortArrow('day:' + d.date)}</th>`).join('')}${th('prom', 'Prom./día', 'title="Horas trabajadas por día de estadía, hasta la fecha del reloj. Orden: más horas primero"', 'num')}<th></th></tr></thead>`;
-  const tot = `<tr class="tot"><td colspan="7" style="text-align:right">${loadMode ? 'Horas asignadas por día (lista filtrada)' : 'Presentes por día (lista filtrada)'}</td>
-    ${days.map((d) => `<td>${loadMode ? (Math.round(list.reduce((n, p) => n + (workload[p.id]?.[d.date] || 0), 0) / 6) / 10).toString().replace('.', ',') : list.filter((p) => p.av[d.date] === 1).length}</td>`).join('')}<td></td><td></td></tr>`;
+  const tot = `<tr class="tot"><td colspan="7" style="text-align:right">Personas presentes cada día (lista filtrada)</td>
+    ${days.map((d) => `<td>${list.filter((p) => p.av[d.date] === 1).length}</td>`).join('')}<td></td><td></td></tr>`;
   $('#people-table').innerHTML = head + '<tbody>' + tot + list.map((p) => `<tr data-id="${p.id}">
     <td class="ed" data-field="nombre"><button class="mini" data-ptasks="${p.id}" title="Ver las tareas asignadas a esta persona">Ver tareas</button> <b>${esc(p.nombre)}</b>${p.por_confirmar ? ' <span class="conf">POR CONFIRMAR</span>' : ''}</td>
     <td class="ed" data-field="grupo" title="${esc(p.grupo)}">${esc(GRUPO_CORTO[p.grupo] || p.grupo)}</td>
@@ -933,6 +933,10 @@ document.addEventListener('keydown', (e) => { if (e.key === 'Escape') $('#clock-
 $('#clock-play').onclick = () => setPlaying(!playing);
 $('#clock-reset').onclick = () => { setPlaying(false); setClock(Date.parse(CLOCK_START + ':00Z')); };
 $('#clock-input').onchange = (e) => { const ms = Date.parse(e.target.value + ':00Z'); if (!isNaN(ms)) setClock(ms); };
+
+// La cabecera de la tabla de Personas se queda fija justo debajo de la barra superior.
+const setTopbarH = () => document.documentElement.style.setProperty('--topbar-h', `${document.querySelector('header.top').offsetHeight}px`);
+setTopbarH(); window.addEventListener('resize', setTopbarH);
 
 // ---------- Arranque ----------
 (async () => {
