@@ -549,7 +549,7 @@ const nTasks = (n) => `<span class="n ${n ? '' : 'zero'}">${n} ${n === 1 ? 'tare
 
 function renderCompanies() {
   const q = norm($('#companies-search').value.trim());
-  const list = companies.filter((c) => !q || norm(c.name).includes(q) || c.shows.some((s) => norm(s.obra).includes(q)));
+  const list = companies.filter((c) => !q || norm(c.name).includes(q) || c.shows.some((s) => norm(s.obra).includes(q)) || c.members.some((m) => norm(m.nombre).includes(q)));
   $('#companies-count').textContent = `${list.length} de ${companies.length}`;
   $('#companies-cards').innerHTML = list.map((c) => {
     const obras = [...new Set(c.shows.map((s) => s.obra))];
@@ -558,7 +558,8 @@ function renderCompanies() {
       <h3>${esc(c.name)}</h3>
       <div>${discs.map((d) => `<span class="disc">${esc(d)}</span>`).join('')}</div>
       ${obras.length && !(obras.length === 1 && obras[0] === c.name) ? `<div class="meta">${obras.map(esc).join(' · ')}</div>` : ''}
-      <div class="foot"><span>${[...new Set(c.shows.map((s) => +s.date.slice(8)))].join(', ')} abr</span>${nTasks(c.task_count)}</div></button>`;
+      <div class="meta">👥 ${c.members.length} personas: ${c.members.slice(0, 4).map((m) => esc(m.nombre)).join(', ')}${c.members.length > 4 ? ` +${c.members.length - 4}` : ''}</div>
+      <div class="foot"><span>${[...new Set(c.shows.map((s) => +s.date.slice(8)))].join(', ')} abr${c.all_festival ? ' · todo el festival' : ''}</span>${nTasks(c.task_count)}</div></button>`;
   }).join('') || '<div class="empty">Sin resultados</div>';
 }
 
@@ -587,6 +588,14 @@ function detailTasks(tasks, { showSpace, showCompanies }) {
   }).join('')}</tbody></table></div>`;
 }
 
+function membersTable(c) {
+  if (!c.members.length) return '<div class="empty">Sin integrantes.</div>';
+  return `<div class="table-wrap"><table class="mem"><thead><tr><th>Nombre</th><th>Dieta / alergias</th>${cfg.days.map((d) => `<th class="d" title="${d.label}">${d.dow.slice(0, 1).toUpperCase()}<br>${d.day}</th>`).join('')}<th class="num">Días</th></tr></thead><tbody>${c.members.map((m) =>
+    `<tr><td><b>${esc(m.nombre)}</b> <span class="cname">(${esc(c.name)})</span></td>
+      <td>${[...(m.dieta && m.dieta !== 'omnivora' ? [DIETA[m.dieta]] : []), ...m.diet_ids.map(dietName)].map((n) => `<span class="dchip">${esc(n)}</span>`).join('') || '<span class="hint">—</span>'}</td>
+      ${cfg.days.map((d) => `<td class="d"><i class="sq sm ${m.days.includes(d.date) ? 'on' : 'off'}" title="${d.label}"></i></td>`).join('')}<td class="num"><b>${m.days.length}</b></td></tr>`).join('')}</tbody></table></div>`;
+}
+
 async function openDetail(kind, key) {
   let title, sub = '', body;
   if (kind === 'company') {
@@ -595,6 +604,7 @@ async function openDetail(kind, key) {
     title = c.name;
     sub = [...new Set(c.shows.map((s) => s.discipline))].join(' · ');
     body = `<h4>Programa</h4><table><tbody>${c.shows.map((s) => `<tr><td>${fmtDay(s.date)}</td><td>${s.time}</td><td><b>${esc(s.obra)}</b></td><td>${esc(s.venue)}</td></tr>`).join('')}</tbody></table>
+      <h4>Integrantes (${c.members.length})${c.all_festival ? ' · la compañía está todo el festival' : ''}</h4>${membersTable(c)}
       <h4>Tareas (${tasks.length})</h4>${detailTasks(tasks, { showSpace: true, showCompanies: false })}`;
   } else {
     const tasks = await api(`/api/spaces/tasks?name=${encodeURIComponent(key)}`);
@@ -632,16 +642,17 @@ async function saveOtherSkill(key) {
 const dietName = (id) => diets.find((d) => d.id === id)?.name ?? id;
 const byNombre = (a, b) => a.nombre.localeCompare(b.nombre, 'es', { sensitivity: 'base' });
 const DIETA = { omnivora: 'Omnívora', vegetariana: 'Vegetariana', vegana: 'Vegana' };
-let cocinaDay = null;
+let cocinaDay = null, cocinaPeople = [];
+const pname = (p) => `${esc(p.nombre)}${p.company ? ` <span class="cname">(${esc(p.company)})</span>` : ''}`;
 
 async function reloadCocina() {
-  [people, diets] = await Promise.all([api('/api/people'), api('/api/diets')]);
+  [cocinaPeople, diets] = await Promise.all([api('/api/cocina'), api('/api/diets')]);
   if (!cocinaDay) cocinaDay = cfg.days.some((d) => d.date === clockDate()) ? clockDate() : cfg.days[0].date;
   renderCocina();
 }
 async function saveDiets(pid, body) {
   await api(`/api/people/${pid}/diets`, 'PUT', body);
-  people = await api('/api/people');
+  cocinaPeople = await api('/api/cocina');
   renderCocina();
 }
 async function newDiet(name) {
@@ -657,14 +668,16 @@ function renderCocina() {
   $('#cocina-days').innerHTML = cfg.days.map((d) => `<button data-cday="${d.date}" class="${d.date === cocinaDay ? 'active' : ''} ${d.date === clockDate() ? 'today' : ''}" title="${d.label}"><small>${d.dow.slice(0, 3)}</small><b>${d.day}</b></button>`).join('');
   $('#cocina-title').textContent = `${day.dow[0].toUpperCase()}${day.dow.slice(1)} ${day.day} de abril`;
 
-  const here = people.filter((p) => p.av[cocinaDay] === 1);
+  const here = cocinaPeople.filter((p) => p.av[cocinaDay] === 1);
   $('#cocina-total').textContent = here.length;
+  const nc = here.filter((p) => p.company_id).length;
+  $('#cocina-split').textContent = `${here.length - nc} voluntarias/os + ${nc} de compañías`;
   $('#cocina-stats').innerHTML = Object.entries(DIETA).map(([k, l]) => `<div class="stat"><b>${here.filter((p) => (p.dieta || 'omnivora') === k).length}</b><span>${l}</span></div>`).join('');
 
-  const list = here.filter((p) => p.diet_ids.length).sort(byNombre);
-  $('#allergy-title').textContent = `Alergias e intolerancias (${list.length})`;
+  const list = here.filter((p) => p.diet_ids.length || (p.dieta || 'omnivora') !== 'omnivora').sort(byNombre);
+  $('#allergy-title').textContent = `Dietas especiales, alergias e intolerancias (${list.length})`;
   const keepP = $('#dt-person').value, keepA = $('#dt-diet').value;
-  $('#dt-person').innerHTML = '<option value="">Elegir persona…</option>' + [...people].sort(byNombre).map((p) => `<option value="${p.id}">${esc(p.nombre)}${teamsOf(p).length ? ` · ${esc(teamsOf(p).join('/'))}` : ''}</option>`).join('');
+  $('#dt-person').innerHTML = '<option value="">Elegir persona…</option>' + [...cocinaPeople].sort(byNombre).map((p) => `<option value="${p.id}">${esc(p.nombre)}${p.company ? ` (${esc(p.company)})` : ''}</option>`).join('');
   $('#dt-diet').innerHTML = '<option value="">Alergia: ninguna nueva</option>' + diets.map((d) => `<option value="${d.id}">${esc(d.name)}</option>`).join('') + '<option value="__other">Otra…</option>';
   $('#dt-person').value = keepP; $('#dt-diet').value = keepA;
   $('#dt-other').hidden = $('#dt-diet').value !== '__other';
@@ -675,10 +688,10 @@ function renderCocina() {
       const add = dtRowOther === p.id
         ? `<span class="other"><input data-dt-input="${p.id}" placeholder="Nueva alergia…" maxlength="40"><button data-dt-save="${p.id}">+</button><button data-dt-cancel="${p.id}" title="Cancelar">×</button></span>`
         : `<select class="dsel" data-dt-add="${p.id}"><option value="">+ alergia</option>${diets.filter((d) => !have.has(d.id)).map((d) => `<option value="${d.id}">${esc(d.name)}</option>`).join('')}<option value="__other">Otra…</option></select>`;
-      return `<tr><td>${esc(p.nombre)}</td>
+      return `<tr><td>${pname(p)}</td>
         <td><select class="dieta-sel" data-dt-dieta="${p.id}">${Object.entries(DIETA).map(([k, l]) => `<option value="${k}" ${k === (p.dieta || 'omnivora') ? 'selected' : ''}>${l}</option>`).join('')}</select></td>
         <td>${p.diet_ids.map((id) => `<span class="dchip">${esc(dietName(id))}<button data-dt-rm="${p.id}:${id}" title="Quitar">×</button></span>`).join('')}${add}</td></tr>`;
-    }).join('') || '<tr><td colspan="3" class="empty">Nadie tiene alergias ni intolerancias registradas ese día.</td></tr>'}</tbody>`;
+    }).join('') || '<tr><td colspan="3" class="empty">Nadie tiene dieta especial ni alergias registradas ese día.</td></tr>'}</tbody>`;
   const ot = $('[data-dt-input]'); if (ot) ot.focus();
 }
 
@@ -857,8 +870,8 @@ document.addEventListener('click', (e) => {
   else if (d.space) run(openDetail('space', d.space));
   else if (d.coRm) { dlgCompanies = dlgCompanies.filter((id) => id !== +d.coRm); renderDlgCompanies(); }
   else if (d.cday) { cocinaDay = d.cday; renderCocina(); }
-  else if (d.dtRm) { const [pid, did] = d.dtRm.split(':').map(Number); const p = people.find((x) => x.id === pid); run(saveDiets(pid, { diet_ids: p.diet_ids.filter((x) => x !== did) })); }
-  else if (d.dtSave) run((async () => { const inp = $(`[data-dt-input="${d.dtSave}"]`); const name = inp.value.trim(); if (!name) return; const nd = await newDiet(name); const p = people.find((x) => x.id === +d.dtSave); dtRowOther = null; await saveDiets(p.id, { diet_ids: [...new Set([...p.diet_ids, nd.id])] }); })());
+  else if (d.dtRm) { const [pid, did] = d.dtRm.split(':').map(Number); const p = cocinaPeople.find((x) => x.id === pid); run(saveDiets(pid, { diet_ids: p.diet_ids.filter((x) => x !== did) })); }
+  else if (d.dtSave) run((async () => { const inp = $(`[data-dt-input="${d.dtSave}"]`); const name = inp.value.trim(); if (!name) return; const nd = await newDiet(name); const p = cocinaPeople.find((x) => x.id === +d.dtSave); dtRowOther = null; await saveDiets(p.id, { diet_ids: [...new Set([...p.diet_ids, nd.id])] }); })());
   else if (d.dtCancel) { dtRowOther = null; renderCocina(); }
   else if (d.tplSave) run(saveTemplateCard(d.tplSave));
   else if (d.tplDel) { const t = templates.find((x) => x.id === +d.tplDel); if (confirm(`¿Eliminar la plantilla "${t.name}"? Sus ${t.task_count} tareas se conservan como tareas sueltas.`)) run(api(`/api/templates/${t.id}`, 'DELETE').then(() => Promise.all([loadTemplates(), loadTasks()]))); }
@@ -875,7 +888,7 @@ document.addEventListener('click', (e) => {
 document.addEventListener('change', (e) => {
   const s = e.target;
   if (s.dataset.dtAdd !== undefined && s.value) {
-    const pid = +s.dataset.dtAdd, p = people.find((x) => x.id === pid);
+    const pid = +s.dataset.dtAdd, p = cocinaPeople.find((x) => x.id === pid);
     if (s.value === '__other') { dtRowOther = pid; renderCocina(); }
     else run(saveDiets(pid, { diet_ids: [...p.diet_ids, +s.value] }));
     return;
@@ -1002,7 +1015,7 @@ $('#dt-add-btn').onclick = () => run((async () => {
   const pid = +$('#dt-person').value, dieta = $('#dt-dieta').value; let did = $('#dt-diet').value;
   if (!pid) return toast('Elige una persona');
   if (!dieta && !did) return toast('Elige una dieta o una alergia');
-  const p = people.find((x) => x.id === pid), body = {};
+  const p = cocinaPeople.find((x) => x.id === pid), body = {};
   if (dieta) body.dieta = dieta;
   if (did === '__other') { const name = $('#dt-other').value.trim(); if (!name) return toast('Escribe el nombre de la alergia o intolerancia'); did = (await newDiet(name)).id; $('#dt-other').value = ''; }
   if (did) body.diet_ids = [...new Set([...p.diet_ids, +did])];

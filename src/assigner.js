@@ -13,12 +13,12 @@ export const range = (t) => { const s0 = toMin(t.start), s = s0 < NIGHT ? s0 + 1
 export const overlap = (a, b) => a[0] < b[1] && b[0] < a[1];
 
 function loadPeople() {
-  const people = new Map(db.prepare('SELECT id, nombre, equipo, horario FROM people').all().map((p) => [p.id, {
+  const people = new Map(db.prepare('SELECT id, nombre, equipo, horario FROM people WHERE company_id IS NULL').all().map((p) => [p.id, {
     id: p.id, nombre: p.nombre, horario: p.horario, av: {}, skills: new Set(),
     teams: new Set(p.equipo.split(',').map((x) => x.trim()).filter(Boolean)),
   }]));
-  for (const r of db.prepare('SELECT person_id, date, present FROM availability').all()) people.get(r.person_id).av[r.date] = r.present;
-  for (const r of db.prepare('SELECT person_id, skill_id FROM person_skills').all()) people.get(r.person_id).skills.add(r.skill_id);
+  for (const r of db.prepare('SELECT person_id, date, present FROM availability').all()) if (people.has(r.person_id)) people.get(r.person_id).av[r.date] = r.present;
+  for (const r of db.prepare('SELECT person_id, skill_id FROM person_skills').all()) if (people.has(r.person_id)) people.get(r.person_id).skills.add(r.skill_id);
   return [...people.values()];
 }
 

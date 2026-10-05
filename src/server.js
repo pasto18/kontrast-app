@@ -17,14 +17,23 @@ const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 app.get('/api/config', (_req, res) => res.json({ days: DAYS, areas: AREAS, maxMinutes: MAX_DAILY_MINUTES }));
 
 function peopleList() {
-  const people = db.prepare('SELECT * FROM people ORDER BY id').all();
+  const people = db.prepare('SELECT * FROM people WHERE company_id IS NULL ORDER BY id').all();
   const m = new Map(people.map((p) => [p.id, { ...p, av: {}, skill_ids: [], diet_ids: [] }]));
-  for (const r of db.prepare('SELECT person_id, date, present FROM availability').all()) m.get(r.person_id).av[r.date] = r.present;
-  for (const r of db.prepare('SELECT person_id, skill_id FROM person_skills').all()) m.get(r.person_id).skill_ids.push(r.skill_id);
-  for (const r of db.prepare('SELECT person_id, diet_id FROM person_diets').all()) m.get(r.person_id).diet_ids.push(r.diet_id);
+  for (const r of db.prepare('SELECT person_id, date, present FROM availability').all()) if (m.has(r.person_id)) m.get(r.person_id).av[r.date] = r.present;
+  for (const r of db.prepare('SELECT person_id, skill_id FROM person_skills').all()) if (m.has(r.person_id)) m.get(r.person_id).skill_ids.push(r.skill_id);
+  for (const r of db.prepare('SELECT person_id, diet_id FROM person_diets').all()) if (m.has(r.person_id)) m.get(r.person_id).diet_ids.push(r.diet_id);
   return [...m.values()];
 }
 app.get('/api/people', (_req, res) => res.json(peopleList()));
+
+// Cocina: voluntarios e integrantes de compañías (con el nombre de su compañía), con presencia y dietas.
+app.get('/api/cocina', (_req, res) => {
+  const rows = db.prepare('SELECT p.*, c.name AS company FROM people p LEFT JOIN companies c ON c.id = p.company_id ORDER BY p.id').all();
+  const m = new Map(rows.map((p) => [p.id, { id: p.id, nombre: p.nombre, company_id: p.company_id, company: p.company, dieta: p.dieta, av: {}, diet_ids: [] }]));
+  for (const r of db.prepare('SELECT person_id, date, present FROM availability').all()) m.get(r.person_id).av[r.date] = r.present;
+  for (const r of db.prepare('SELECT person_id, diet_id FROM person_diets').all()) m.get(r.person_id).diet_ids.push(r.diet_id);
+  res.json([...m.values()]);
+});
 
 const skillIds = (body) => [...new Set((Array.isArray(body.skill_ids) ? body.skill_ids : []).map(Number))];
 const allSkillsExist = (ids) => ids.every((id) => db.prepare('SELECT 1 FROM skills WHERE id = ?').get(id));
@@ -151,8 +160,13 @@ const byName = (a, b) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base
 app.get('/api/companies', (_req, res) => {
   const shows = db.prepare('SELECT * FROM shows ORDER BY date, time').all();
   const counts = new Map(db.prepare('SELECT company_id, COUNT(*) n FROM task_companies GROUP BY company_id').all().map((r) => [r.company_id, r.n]));
+  const members = db.prepare('SELECT id, nombre, dieta, company_id FROM people WHERE company_id IS NOT NULL ORDER BY nombre').all();
+  const days = new Map(), dd = new Map();
+  for (const r of db.prepare("SELECT a.person_id, a.date FROM availability a JOIN people p ON p.id = a.person_id WHERE p.company_id IS NOT NULL AND a.present = 1").all()) (days.get(r.person_id) || days.set(r.person_id, []).get(r.person_id)).push(r.date);
+  for (const r of db.prepare('SELECT d.person_id, d.diet_id FROM person_diets d JOIN people p ON p.id = d.person_id WHERE p.company_id IS NOT NULL').all()) (dd.get(r.person_id) || dd.set(r.person_id, []).get(r.person_id)).push(r.diet_id);
   res.json(db.prepare('SELECT * FROM companies').all().map((c) => ({
     ...c, task_count: counts.get(c.id) || 0, shows: shows.filter((s) => s.company_id === c.id),
+    members: members.filter((m) => m.company_id === c.id).map((m) => ({ id: m.id, nombre: m.nombre, dieta: m.dieta, diet_ids: dd.get(m.id) || [], days: (days.get(m.id) || []).sort() })),
   })).sort(byName));
 });
 
@@ -260,7 +274,7 @@ app.post('/api/tasks/:id/volunteers', (req, res) => {
   const id = +req.params.id, pid = +req.body.person_id;
   const task = db.prepare('SELECT needed FROM tasks WHERE id = ?').get(id);
   if (!task) return bad(res, 'Tarea no encontrada', 404);
-  if (!db.prepare('SELECT 1 FROM people WHERE id = ?').get(pid)) return bad(res, 'Persona no encontrada', 404);
+  if (!db.prepare('SELECT 1 FROM people WHERE id = ? AND company_id IS NULL').get(pid)) return bad(res, 'Persona no encontrada', 404);
   const n = db.prepare('SELECT COUNT(*) n FROM assignments WHERE task_id = ?').get(id).n;
   if (n >= task.needed) return bad(res, 'La tarea ya tiene todos los voluntarios necesarios', 409);
   const strict = strictError(id, pid);

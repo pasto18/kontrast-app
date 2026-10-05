@@ -120,6 +120,10 @@ for (const col of ['template_id INTEGER REFERENCES task_templates(id) ON DELETE 
   if (!db.prepare("SELECT 1 FROM pragma_table_info('tasks') WHERE name = ?").get(col.split(' ')[0])) db.exec(`ALTER TABLE tasks ADD COLUMN ${col}`);
 }
 
+// Integrantes de compañías: filas de people con company_id (no son voluntarios: no salen en Personas ni se asignan a tareas).
+if (!db.prepare("SELECT 1 FROM pragma_table_info('people') WHERE name = 'company_id'").get()) db.exec('ALTER TABLE people ADD COLUMN company_id INTEGER REFERENCES companies(id) ON DELETE CASCADE');
+if (!db.prepare("SELECT 1 FROM pragma_table_info('companies') WHERE name = 'all_festival'").get()) db.exec('ALTER TABLE companies ADD COLUMN all_festival INTEGER NOT NULL DEFAULT 0');
+
 // Dieta base de cada persona (omnivora | vegetariana | vegana). Las alergias e intolerancias son un catálogo aparte.
 if (!db.prepare("SELECT 1 FROM pragma_table_info('people') WHERE name = 'dieta'").get()) db.exec("ALTER TABLE people ADD COLUMN dieta TEXT NOT NULL DEFAULT 'omnivora'");
 
@@ -324,6 +328,41 @@ function seedDietaBase() {
   db.prepare("UPDATE diets SET name = 'Celiaquía (sin gluten)' WHERE name = 'Celíaco'").run();
 }
 
+// Integrantes de prueba para cada compañía: de 2 a 6 personas con nombre al azar (semilla fija) y dieta / alergias al azar.
+// Presencia: si la compañía actúa en una semana del festival, está desde el lunes de esa semana hasta su último día de función
+// de esa semana; si actúa en las dos semanas, está todo el festival.
+const NOMBRES = ['Aina', 'Biel', 'Marta', 'Pau', 'Núria', 'Jordi', 'Laia', 'Arnau', 'Clara', 'Marc', 'Júlia', 'Oriol', 'Paula', 'Roger', 'Anna', 'Pol', 'Irene', 'Hugo', 'Sofía', 'Mateo', 'Lucía', 'Álex', 'Carla', 'Iván', 'Elena', 'Sergio', 'Noa', 'Dani', 'Emma', 'Adrià', 'Chloé', 'Louis', 'Camille', 'Hugo', 'Léa', 'Théo', 'Manon', 'Jules', 'Inès', 'Nathan', 'Giulia', 'Marco', 'Chiara', 'Luca', 'Elena', 'Matteo', 'Sara', 'Paolo', 'Eva', 'Tomás'];
+const APELLIDOS = ['Puig', 'Serra', 'Vidal', 'Ferrer', 'Roca', 'Soler', 'Pons', 'Mas', 'Coll', 'Ribas', 'García', 'Martín', 'López', 'Sánchez', 'Gómez', 'Ruiz', 'Navarro', 'Torres', 'Molina', 'Ortega', 'Dubois', 'Moreau', 'Laurent', 'Bernard', 'Lefèvre', 'Garnier', 'Rossi', 'Ferrari', 'Bianchi', 'Conti', 'Esposito', 'Greco', 'Lombardi', 'Costa', 'Mora', 'Prat', 'Font', 'Bosch', 'Sala', 'Camps'];
+
+function seedMiembros() {
+  let x = 20260410; const rnd = () => ((x = (x * 1664525 + 1013904223) % 4294967296) / 4294967296);
+  const pick = (a) => a[Math.floor(rnd() * a.length)];
+  const used = new Set(db.prepare('SELECT nombre FROM people').all().map((r) => r.nombre));
+  const diet = (n) => db.prepare('SELECT id FROM diets WHERE name = ?').get(n)?.id;
+  const allergies = ['Celiaquía (sin gluten)', 'Alergia a frutos secos', 'Intolerancia a la lactosa', 'Alergia al marisco', 'Sin cerdo'].map(diet).filter(Boolean);
+  const insP = db.prepare("INSERT INTO people (nombre, grupo, equipo, sectores, aptitudes, por_confirmar, company_id, dieta) VALUES (?, 'COMPAÑÍA', '', '', '', 0, ?, ?)");
+  const insA = db.prepare('INSERT INTO availability (person_id, date, present) VALUES (?,?,?)');
+  const insD = db.prepare('INSERT OR IGNORE INTO person_diets (person_id, diet_id) VALUES (?,?)');
+  const week = (d) => Math.floor((+d.slice(8) - DAYS[0].day) / 7);
+  for (const c of db.prepare('SELECT id FROM companies ORDER BY id').all()) {
+    const shows = db.prepare('SELECT date FROM shows WHERE company_id = ?').all(c.id).map((s) => s.date);
+    const last = new Map(); // semana → último día de función
+    for (const d of shows) if (!last.has(week(d)) || d > last.get(week(d))) last.set(week(d), d);
+    const todo = last.size > 1;
+    if (todo) db.prepare('UPDATE companies SET all_festival = 1 WHERE id = ?').run(c.id);
+    const present = DAYS.filter((d) => todo || (last.has(week(d.date)) && d.date <= last.get(week(d.date)))).map((d) => d.date);
+    const n = 2 + Math.floor(rnd() * 5); // 2 a 6
+    for (let i = 0; i < n; i++) {
+      let name; do { name = `${pick(NOMBRES)} ${pick(APELLIDOS)}`; } while (used.has(name));
+      used.add(name);
+      const r = rnd();
+      const id = Number(insP.run(name, c.id, r < 0.13 ? 'vegetariana' : r < 0.2 ? 'vegana' : 'omnivora').lastInsertRowid);
+      for (const d of DAYS) insA.run(id, d.date, present.includes(d.date) ? 1 : 0);
+      if (rnd() < 0.15 && allergies.length) insD.run(id, pick(allergies));
+    }
+  }
+}
+
 const norm = (s) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 export function suggestCompanies(taskName) {
   const n = norm(taskName);
@@ -368,4 +407,5 @@ export function seedIfEmpty() {
   applySeed('plantilla-taquilla-v1', seedPlantillaTaquilla);
   applySeed('dietas-v1', seedDietas);
   applySeed('dietas-v2-dieta-base', seedDietaBase);
+  applySeed('miembros-v1', seedMiembros);
 }
