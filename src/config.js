@@ -66,3 +66,6 @@ export const capOf = (teams) => ([...teams].includes('TAQUILLA') ? MAX_DAILY_MIN
 // Economía: coste de la comida por persona y comida (desayuno, comida y cena) = 9 € por persona y día.
 export const MEAL_COST_CENTS = 300;
 export const MEALS = ['Desayuno', 'Comida', 'Cena'];
+
+// Economía: pago a las compañías, 300 € por integrante y por actuación.
+export const CACHE_PER_MEMBER_CENTS = 30000;

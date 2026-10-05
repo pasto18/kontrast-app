@@ -791,25 +791,30 @@ function renderEconomia() {
     `<button data-ecoday="${d.date}" class="${d.date === ecoDay ? 'active' : ''} ${d.date === clockDate() ? 'today' : ''}" title="${d.label}"><small>${d.dow.slice(0, 3)}</small><b>${d.day}</b></button>`).join('');
   const tiles = (inc, exp) => `<div class="eco-tiles"><div class="eco-tile in"><span>Ingresos</span><b>${eur(inc)}</b></div><div class="eco-tile out"><span>Gastos</span><b>${eur(exp)}</b></div>
     <div class="eco-tile ${inc - exp < 0 ? 'neg' : 'pos'}"><span>Balance</span><b>${eur(inc - exp)}</b></div></div>`;
+  const perMember = eur(eco.cache_per_member_cents);
   if (ecoDay === 'all') {
     const t = eco.totals;
     $('#eco-title').textContent = 'Todo el festival';
-    $('#eco-body').innerHTML = tiles(t.income_cents, t.expense_cents) + `<div class="eco-card"><h4>Día a día</h4><table id="eco-all"><thead><tr><th>Día</th><th class="num">Personas</th><th class="num">Ingresos</th><th class="num">Gastos (comida)</th><th class="num">Balance</th></tr></thead><tbody>${eco.days.map((d) =>
-      `<tr><td><button class="linklike" data-ecoday="${d.date}">${esc(fmtDay(d.date))}</button></td><td class="num">${d.people}</td><td class="num">${d.income_cents ? eur(d.income_cents) : '—'}</td><td class="num">${eur(d.expense_cents)}</td><td class="num ${moneyCls(d.balance_cents)}"><b>${eur(d.balance_cents)}</b></td></tr>`).join('')}
-      <tr class="total"><td>Total</td><td class="num"></td><td class="num">${eur(t.income_cents)}</td><td class="num">${eur(t.expense_cents)}</td><td class="num ${moneyCls(t.balance_cents)}">${eur(t.balance_cents)}</td></tr></tbody></table></div>`;
+    $('#eco-body').innerHTML = tiles(t.income_cents, t.expense_cents) + `<div class="eco-card"><h4>Día a día</h4><table id="eco-all"><thead><tr><th>Día</th><th class="num">Personas</th><th class="num">Ingresos</th><th class="num">Comida</th><th class="num">Compañías</th><th class="num">Gastos</th><th class="num">Balance</th></tr></thead><tbody>${eco.days.map((d) =>
+      `<tr><td><button class="linklike" data-ecoday="${d.date}">${esc(fmtDay(d.date))}</button></td><td class="num">${d.people}</td><td class="num">${d.income_cents ? eur(d.income_cents) : '—'}</td><td class="num">${eur(d.food_cents)}</td><td class="num">${d.cache_cents ? eur(d.cache_cents) : '—'}</td><td class="num">${eur(d.expense_cents)}</td><td class="num ${moneyCls(d.balance_cents)}"><b>${eur(d.balance_cents)}</b></td></tr>`).join('')}
+      <tr class="total"><td>Total</td><td class="num"></td><td class="num">${eur(t.income_cents)}</td><td class="num">${eur(t.food_cents)}</td><td class="num">${eur(t.cache_cents)}</td><td class="num">${eur(t.expense_cents)}</td><td class="num ${moneyCls(t.balance_cents)}">${eur(t.balance_cents)}</td></tr></tbody></table></div>`;
     return;
   }
   const d = eco.days.find((x) => x.date === ecoDay), day = cfg.days.find((x) => x.date === ecoDay);
   $('#eco-title').textContent = `${day.dow[0].toUpperCase()}${day.dow.slice(1)} ${day.day} de abril`;
   $('#eco-body').innerHTML = tiles(d.income_cents, d.expense_cents) + `<div class="eco-cols">
-    <div class="eco-card"><h4>Ingresos por espectáculo</h4>${d.shows.length ? `<table><thead><tr><th>Hora</th><th>Espectáculo</th><th class="num">Entradas</th><th class="num">Ingresos</th></tr></thead><tbody>${d.shows.map((s) =>
-      `<tr><td>${s.time}</td><td><b>${esc(s.obra)}</b><div class="cname">${esc(s.company)}</div></td><td class="num">${s.tickets || '—'}</td><td class="num">${s.revenue_cents ? `<b>${eur(s.revenue_cents)}</b>` : '—'}</td></tr>`).join('')}
-      <tr class="total"><td colspan="3">Total ingresos</td><td class="num">${eur(d.income_cents)}</td></tr></tbody></table>
-      <p class="hint">Lo que corresponde a cada espectáculo de las entradas vendidas; los abonos y combinadas se reparten entre sus espectáculos (ver Taquilla).</p>` : '<div class="empty">No hay espectáculos este día.</div>'}</div>
-    <div class="eco-card"><h4>Gastos: comida</h4><table><thead><tr><th>Comida</th><th class="num">Personas</th><th class="num">Precio</th><th class="num">Total</th></tr></thead><tbody>${d.meals.map((m) =>
+    <div class="eco-card"><h4>Espectáculos: ingresos y coste</h4>${d.shows.length ? `<table><thead><tr><th>Hora</th><th>Espectáculo</th><th class="num">Entradas</th><th class="num">Ingresos</th><th class="num" title="Pago a la compañía: integrantes × ${perMember}">Coste</th><th class="num">Resultado</th></tr></thead><tbody>${d.shows.map((s) =>
+      `<tr><td>${s.time}</td><td><b>${esc(s.obra)}</b><div class="cname">${esc(s.company)}</div></td><td class="num">${s.tickets || '—'}</td><td class="num">${s.revenue_cents ? eur(s.revenue_cents) : '—'}</td>
+        <td class="num" title="${s.members} integrantes × ${perMember}">${eur(s.cost_cents)}<div class="cname">${s.members} × ${perMember}</div></td><td class="num ${moneyCls(s.result_cents)}"><b>${eur(s.result_cents)}</b></td></tr>`).join('')}
+      <tr class="total"><td colspan="3">Total</td><td class="num">${eur(d.income_cents)}</td><td class="num">${eur(d.cache_cents)}</td><td class="num ${moneyCls(d.income_cents - d.cache_cents)}">${eur(d.income_cents - d.cache_cents)}</td></tr></tbody></table>
+      <p class="hint">Ingresos: lo que corresponde a cada espectáculo de las entradas vendidas (los abonos y combinadas se reparten entre sus espectáculos, ver Taquilla). Coste: ${perMember} por integrante de la compañía y por actuación.</p>` : '<div class="empty">No hay espectáculos este día.</div>'}</div>
+    <div class="eco-card"><h4>Gastos</h4><table><thead><tr><th>Concepto</th><th class="num">Personas</th><th class="num">Precio</th><th class="num">Total</th></tr></thead><tbody>${d.meals.map((m) =>
       `<tr><td>${esc(m.label)}</td><td class="num">${m.people}</td><td class="num">${eur(m.unit_cents)}</td><td class="num">${eur(m.total_cents)}</td></tr>`).join('')}
+      <tr><td colspan="3"><b>Comida</b> (${d.people} personas × ${eur(eco.meal_cost_cents * eco.meals.length)} al día)</td><td class="num"><b>${eur(d.food_cents)}</b></td></tr>
+      ${d.shows.map((s) => `<tr><td>${esc(s.company)} <span class="cname">· ${esc(s.obra)}</span></td><td class="num">${s.members}</td><td class="num">${perMember}</td><td class="num">${eur(s.cost_cents)}</td></tr>`).join('')}
+      <tr><td colspan="3"><b>Pago a compañías</b></td><td class="num"><b>${eur(d.cache_cents)}</b></td></tr>
       <tr class="total"><td colspan="3">Total gastos</td><td class="num">${eur(d.expense_cents)}</td></tr></tbody></table>
-      <p class="hint">${d.people} personas presentes (voluntarias/os e integrantes de compañías) × ${eur(eco.meal_cost_cents * eco.meals.length)} por persona y día (${eur(eco.meal_cost_cents)} × ${eco.meals.length} comidas: ${eco.meals.join(', ').toLowerCase()}).</p></div></div>`;
+      <p class="hint">Comida: ${eur(eco.meal_cost_cents)} por persona y comida (${eco.meals.join(', ').toLowerCase()}), para las voluntarias/os e integrantes de compañías presentes ese día.</p></div></div>`;
 }
 
 // ---------- Tareas por espectáculo (plantillas) ----------
